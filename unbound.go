@@ -124,7 +124,7 @@ func (u *Unbound) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 
 	// If the advertised size of the client is smaller than we got, unbound either retried with TCP or something else happened.
 	if state.Size() < res.AnswerPacket.Len() {
-		res.AnswerPacket, _ = state.Scrub(res.AnswerPacket)
+		res.AnswerPacket = state.Scrub(res.AnswerPacket)
 		res.AnswerPacket.Truncated = true
 		w.WriteMsg(res.AnswerPacket)
 
