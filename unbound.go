@@ -16,31 +16,6 @@ import (
 
 var log = clog.NewWithPlugin("unbound")
 
-// pretty print result
-func pp_res(res *unbound.Result) {
-
-	fmt.Printf("result.for:    %v %v %v\n", res.Qname, res.Qtype, res.Qclass)
-
-	fmt.Printf("result.Data:   [") // Data [][]byte -- Slice of rdata items formed from the reply
-	space := ""
-	for _, item := range res.Data {
-		if res.Qtype == dns.TypeTXT {
-			fmt.Printf("%v(%v)%v", space, item[0], string(item[1:]))
-		} else {
-			fmt.Printf("%v%v", space, item)
-		}
-		space = "  "
-	}
-	fmt.Printf("]\n")
-
-	fmt.Printf("result.RR:     %v\n", res.Rr) // RR []dns.RR -- The RR encoded from Data, Qclass, Qtype, Qname and Ttl
-
-	//fmt.Printf("result.AnsPkt: \n%v", res.AnswerPacket) //AnswerPacket *dns.Msg -- Full answer packet
-
-	fmt.Printf("result.ret:    Rcode(%v)  HaveData(%v)  NxDomain(%v)  Secure(%v)  Bogus(%v)  why(%v)\n",
-		res.Rcode, res.HaveData, res.NxDomain, res.Secure, res.Bogus, res.WhyBogus)
-}
-
 // Unbound is a plugin that resolves requests using libunbound.
 type Unbound struct {
 	u *unbound.Unbound
@@ -108,11 +83,24 @@ func (u *Unbound) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 		err error
 	)
 
-	switch state.Proto() {
-	case "tcp":
-		res, err = u.t.Resolve(state.QName(), state.QType(), state.QClass())
-	case "udp":
-		res, err = u.u.Resolve(state.QName(), state.QType(), state.QClass())
+	switch {
+
+	case state.QClass() == dns.ClassINET && (state.QType() == dns.TypeA || state.QType() == dns.TypeAAAA):
+
+		if res, err = u.resolve_aa(state); err == nil { // try AA first
+			break
+		}
+
+		fallthrough
+
+	default:
+
+		switch state.Proto() {
+		case "tcp":
+			res, err = u.t.Resolve(state.QName(), state.QType(), state.QClass())
+		case "udp":
+			res, err = u.u.Resolve(state.QName(), state.QType(), state.QClass())
+		}
 	}
 
 	rcode := dns.RcodeServerFailure
