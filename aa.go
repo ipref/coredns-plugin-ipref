@@ -37,8 +37,17 @@ func pp_res(res *unbound.Result) {
 }
 
 // allocate encoded address to an IPREF address
-func encoded_address([]string) string {
-	return "10.252.253.254"
+//var fake_ea byte
+
+func encoded_address(ip net.IP, ref string) net.IP {
+
+	//	if fake_ea++; fake_ea == 255 {
+	//		fake_ea = 1
+	//	}
+
+	ea := net.IP{10, 252, 253, 1}
+
+	return ea
 }
 
 // resolve AA query (emulated with TXT for now)
@@ -57,91 +66,111 @@ func (u *Unbound) resolve_aa(state request.Request) (*unbound.Result, error) {
 	}
 
 	if err != nil || res.Rcode != dns.RcodeSuccess || !res.HaveData || res.NxDomain {
-		return res, err
+		return res, fmt.Errorf("no TXT records, containing embeded AA records, found")
 	}
 
 	// parse AA embedded in TXT
 
-	var aa string
+	rrs := make([]dns.RR, 0) // encoded addresses
 
-	for _, item := range res.Data {
-		if len(item) == 0 {
+	for _, rr := range res.Rr {
+
+		hdr := rr.Header()
+
+		if hdr.Rrtype != dns.TypeTXT || hdr.Class != dns.ClassINET {
 			continue
 		}
-		aa = string(item[1:])
-		break // for now we allow only one
-	}
 
-	if len(aa) == 0 {
-		return res, fmt.Errorf("TXT resolved successfully but no AA records")
-	}
+		for _, txt := range rr.(*dns.TXT).Txt {
 
-	toks := strings.Fields(aa)
-	if len(toks) != 2 || toks[0] != "AA" {
-		return res, fmt.Errorf("Invalid AA record")
-	}
+			// get IPREF address
 
-	addr := strings.Split(toks[1], "+") // ipref address: ip + ref
-
-	if len(addr) != 2 {
-		return res, fmt.Errorf("Invalid AA format")
-	}
-
-	// resolve IP portion of IPREF address if necessary
-
-	if ip := net.ParseIP(addr[0]); ip == nil {
-
-		var ipres *unbound.Result
-
-		dns_type := dns.TypeA
-		if strings.Index(addr[0], ".") < 0 {
-			dns_type = dns.TypeAAAA
-		}
-
-		switch state.Proto() {
-		case "tcp":
-			ipres, err = u.t.Resolve(addr[0], dns_type, dns.ClassINET)
-		case "udp":
-			ipres, err = u.u.Resolve(addr[0], dns_type, dns.ClassINET)
-		}
-
-		if err != nil || ipres.Rcode != dns.RcodeSuccess || !ipres.HaveData || ipres.NxDomain {
-			return ipres, err
-		}
-
-		addr[0] = ""
-		for _, item := range ipres.Data {
-			if len(item) == 0 {
-				continue
+			toks := strings.Fields(txt)
+			if len(toks) != 2 || toks[0] != "AA" {
+				continue //return res, fmt.Errorf("Invalid AA record")
 			}
-			addr[0] = net.IP(item).String()
-			break // for now we allow only one
-		}
-		if len(addr[0]) == 0 {
-			return ipres, fmt.Errorf("cannot resolve IP portion of IPREF address")
+
+			addr := strings.Split(toks[1], "+") // ipref address: ip + ref
+
+			if len(addr) != 2 {
+				continue // return res, fmt.Errorf("Invalid AA format")
+			}
+
+			ref := addr[1] // string for now, but we should parse it to a Ref type
+
+			// resolve IP portion of IPREF address if necessary
+
+			if ip := net.ParseIP(addr[0]); ip == nil {
+
+				var ipres *unbound.Result
+
+				dns_type := dns.TypeA
+				if strings.Index(addr[0], ".") < 0 {
+					dns_type = dns.TypeAAAA
+				}
+
+				switch state.Proto() {
+				case "tcp":
+					ipres, err = u.t.Resolve(addr[0], dns_type, dns.ClassINET)
+				case "udp":
+					ipres, err = u.u.Resolve(addr[0], dns_type, dns.ClassINET)
+				}
+
+				if err != nil || ipres.Rcode != dns.RcodeSuccess || !ipres.HaveData || ipres.NxDomain {
+					continue // return ipres, err
+				}
+
+				// process ip resolution rr
+
+				for _, iprr := range ipres.Rr {
+
+					iphdr := iprr.Header()
+
+					if iphdr.Rrtype != dns.TypeA || hdr.Class != dns.ClassINET {
+						continue
+					}
+
+					aa := new(dns.A) // we return AA as A ipv4 only for now
+					aa.A = encoded_address(iprr.(*dns.A).A, ref)
+					aa.Hdr.Name = hdr.Name
+					aa.Hdr.Rrtype = dns.TypeA
+					aa.Hdr.Class = dns.ClassINET
+					aa.Hdr.Ttl = hdr.Ttl
+					aa.Hdr.Rdlength = uint16(len(aa.A))
+
+					rrs = append(rrs, aa)
+				}
+
+			} else {
+
+				aa := new(dns.A) // we return AA as A ipv4 only for now
+				aa.A = encoded_address(ip, ref)
+				aa.Hdr.Name = hdr.Name
+				aa.Hdr.Rrtype = dns.TypeA
+				aa.Hdr.Class = dns.ClassINET
+				aa.Hdr.Ttl = hdr.Ttl
+				aa.Hdr.Rdlength = uint16(len(aa.A))
+
+				rrs = append(rrs, aa)
+			}
 		}
 	}
 
-	// get encoded address
-
-	ea_str := encoded_address(addr)
-	if len(ea_str) == 0 {
-		return res, fmt.Errorf("cannot allocate encoded address to IPREF address")
+	if len(rrs) == 0 {
+		return res, fmt.Errorf("TXT resolved successfully but no AA records")
 	}
 
 	// compose result, replace TXT result with generated A result
 
-	ea_bytes := net.ParseIP(ea_str).To4()
+	res.Qtype = dns.TypeA
+	res.Rr = rrs
+	res.AnswerPacket.Answer = rrs
+	res.AnswerPacket.Question = state.Req.Question
 
-	res.Data[0] = ea_bytes
-
-	res_rr := res.Rr[0]
-	ix := strings.LastIndex(res_rr, "TXT")
-	if ix < 0 {
-		return res, fmt.Errorf("inconsistent result RR")
+	res.Data = make([][]byte, 0)
+	for _, rr := range rrs {
+		res.Data = append(res.Data, rr.(*dns.A).A)
 	}
-	res.Rr[0] = res_rr[:ix] + "A\t" + ea_str
-	res.AnswerPacket.Answer[0] = res.Rr[0]
 
 	return res, nil
 }
