@@ -101,7 +101,7 @@ Enable [DNS Query Name Minimisation](https://tools.ietf.org/html/rfc7816) by set
 
 IPREF needs new DNS resource record type. The plan is to register AA records with IANA.
 For now, as a workaround to allow development, the unavailable AA records are emulated
-by embedding them in TXT records. This is invisible to host performing name resolution.
+by embedding them in TXT records. This is invisible to hosts performing name resolution.
 
 The *ipref* plugin depends on libunbound(3) which is C library, to compile this you have
 a dependency on C and cgo. You can't compile CoreDNS completely static. For compilation you
@@ -112,6 +112,7 @@ a trust anchor.
 
 ## See Also
 
-See <https://github.com/coredns/unbound> for information on the unboud plugin.
-See <https://unbound.net> for information on Unbound and unbound.conf(5). See
-<https://github.com/miekg/unbound> for the (cgo) Go wrapper for libunbound.
+See <https://github.com/ipref/dns> for information on IPREF addressing.<br/>
+See <https://github.com/coredns/unbound> for information on the unboud plugin.<br/>
+See <https://unbound.net> for information on Unbound and unbound.conf(5).<br/>
+See <https://github.com/miekg/unbound> for the (cgo) Go wrapper for libunbound.<br/>
