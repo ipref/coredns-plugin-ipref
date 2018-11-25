@@ -1,4 +1,4 @@
-package unbound
+package ipref
 
 import (
 	"context"
@@ -14,10 +14,10 @@ import (
 	"github.com/miekg/unbound"
 )
 
-var log = clog.NewWithPlugin("unbound")
+var log = clog.NewWithPlugin("ipref")
 
-// Unbound is a plugin that resolves requests using libunbound.
-type Unbound struct {
+// Ipref is a plugin that resolves requests using libunbound.
+type Ipref struct {
 	u *unbound.Unbound
 	t *unbound.Unbound
 
@@ -33,37 +33,37 @@ var options = map[string]string{
 	"rrset-cache-size": "0",
 }
 
-// New returns a pointer to an initialzed Unbound.
-func New() *Unbound {
+// New returns a pointer to an initialzed Ipref.
+func New() *Ipref {
 	udp := unbound.New()
 	tcp := unbound.New()
 	tcp.SetOption("tcp-upstream:", "yes")
 
-	u := &Unbound{u: udp, t: tcp}
+	ipr := &Ipref{u: udp, t: tcp}
 
 	for k, v := range options {
-		if err := u.setOption(k, v); err != nil {
+		if err := ipr.setOption(k, v); err != nil {
 			log.Warningf("Could not set option: %s", err)
 		}
 	}
 
-	return u
+	return ipr
 }
 
 // Stop stops unbound and cleans up the memory used.
-func (u *Unbound) Stop() error {
-	u.u.Destroy()
-	u.t.Destroy()
+func (ipr *Ipref) Stop() error {
+	ipr.u.Destroy()
+	ipr.t.Destroy()
 	return nil
 }
 
-// setOption sets option k to value v in u.
-func (u *Unbound) setOption(k, v string) error {
+// setOption sets option k to value v in ipr.
+func (ipr *Ipref) setOption(k, v string) error {
 	// Add ":" as unbound expects it
 	k += ":"
 	// Set for both udp and tcp handlers, return the error from the latter.
-	u.u.SetOption(k, v)
-	err := u.t.SetOption(k, v)
+	ipr.u.SetOption(k, v)
+	err := ipr.t.SetOption(k, v)
 	if err != nil {
 		return fmt.Errorf("failed to set option %q with value %q: %s", k, v, err)
 	}
@@ -71,11 +71,11 @@ func (u *Unbound) setOption(k, v string) error {
 }
 
 // ServeDNS implements the plugin.Handler interface.
-func (u *Unbound) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
+func (ipr *Ipref) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
 	state := request.Request{W: w, Req: r}
 
-	if !u.match(state) {
-		return plugin.NextOrFailure(u.Name(), u.Next, ctx, w, r)
+	if !ipr.match(state) {
+		return plugin.NextOrFailure(ipr.Name(), ipr.Next, ctx, w, r)
 	}
 
 	var (
@@ -87,7 +87,7 @@ func (u *Unbound) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 
 	case state.QClass() == dns.ClassINET && (state.QType() == dns.TypeA || state.QType() == dns.TypeAAAA):
 
-		if res, err = u.resolve_aa(state); err == nil { // try AA first
+		if res, err = ipr.resolve_aa(state); err == nil { // try AA first
 			break
 		}
 
@@ -97,9 +97,9 @@ func (u *Unbound) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 
 		switch state.Proto() {
 		case "tcp":
-			res, err = u.t.Resolve(state.QName(), state.QType(), state.QClass())
+			res, err = ipr.t.Resolve(state.QName(), state.QType(), state.QClass())
 		case "udp":
-			res, err = u.u.Resolve(state.QName(), state.QType(), state.QClass())
+			res, err = ipr.u.Resolve(state.QName(), state.QType(), state.QClass())
 		}
 	}
 
@@ -153,4 +153,4 @@ func (u *Unbound) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 }
 
 // Name implements the Handler interface.
-func (u *Unbound) Name() string { return "unbound" }
+func (ipr *Ipref) Name() string { return "ipref" }

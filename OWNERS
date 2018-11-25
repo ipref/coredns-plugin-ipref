@@ -1,9 +1,7 @@
 reviewers:
-  - miekg
-  - johnbelamaric
+  - waldemara
 approvers:
-  - miekg
-  - johnbelamaric
+  - waldemara
 features:
   - comments
   - reviewers

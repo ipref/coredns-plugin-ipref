@@ -1,4 +1,4 @@
-package unbound
+package ipref
 
 import (
 	"testing"
@@ -11,14 +11,14 @@ func TestSetup(t *testing.T) {
 		input     string
 		shouldErr bool
 	}{
-		{`unbound`, false},
-		{`unbound .`, false},
-		{`unbound a b`, false},
+		{`ipref`, false},
+		{`ipref .`, false},
+		{`ipref a b`, false},
 	}
 
 	for i, test := range tests {
 		c := caddy.NewTestController("dns", test.input)
-		_, err := unboundParse(c)
+		_, err := iprefParse(c)
 
 		if test.shouldErr && err == nil {
 			t.Errorf("Test %d: Expected error but found none for input %s", i, test.input)
@@ -37,26 +37,26 @@ func TestSetupExtended(t *testing.T) {
 		input     string
 		shouldErr bool
 	}{
-		{`unbound {
+		{`ipref {
 			option msg-cache-size 0
 			option msg-cache-size 0
 		}`, false},
-		{`unbound {
+		{`ipref {
 			option msg-cache-size 0
 			except example.org example.net
 		}`, false},
 
-		{`unbound {
+		{`ipref {
 			option bla yes
 		}`, true},
-		{`unbound {
+		{`ipref {
 			optoin qname-minimisation yes
 		}`, true},
 	}
 
 	for i, test := range tests {
 		c := caddy.NewTestController("dns", test.input)
-		_, err := unboundParse(c)
+		_, err := iprefParse(c)
 
 		if test.shouldErr && err == nil {
 			t.Errorf("Test %d: Expected error but found none for input %s", i, test.input)

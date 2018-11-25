@@ -1,4 +1,4 @@
-package unbound
+package ipref
 
 import (
 	"fmt"
@@ -51,7 +51,7 @@ func encoded_address(ip net.IP, ref string) net.IP {
 }
 
 // resolve AA query (emulated with TXT for now)
-func (u *Unbound) resolve_aa(state request.Request) (*unbound.Result, error) {
+func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 	var res *unbound.Result
 	var err error
@@ -60,9 +60,9 @@ func (u *Unbound) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 	switch state.Proto() {
 	case "tcp":
-		res, err = u.t.Resolve(state.QName(), dns.TypeTXT, dns.ClassINET)
+		res, err = ipr.t.Resolve(state.QName(), dns.TypeTXT, dns.ClassINET)
 	case "udp":
-		res, err = u.u.Resolve(state.QName(), dns.TypeTXT, dns.ClassINET)
+		res, err = ipr.u.Resolve(state.QName(), dns.TypeTXT, dns.ClassINET)
 	}
 
 	if err != nil || res.Rcode != dns.RcodeSuccess || !res.HaveData || res.NxDomain {
@@ -111,9 +111,9 @@ func (u *Unbound) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 				switch state.Proto() {
 				case "tcp":
-					ipres, err = u.t.Resolve(addr[0], dns_type, dns.ClassINET)
+					ipres, err = ipr.t.Resolve(addr[0], dns_type, dns.ClassINET)
 				case "udp":
-					ipres, err = u.u.Resolve(addr[0], dns_type, dns.ClassINET)
+					ipres, err = ipr.u.Resolve(addr[0], dns_type, dns.ClassINET)
 				}
 
 				if err != nil || ipres.Rcode != dns.RcodeSuccess || !ipres.HaveData || ipres.NxDomain {

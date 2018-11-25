@@ -1,4 +1,4 @@
-package unbound
+package ipref
 
 import (
 	"sync"
@@ -8,11 +8,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// Metrics exported by the unbound plugin.
+// Metrics exported by the ipref plugin.
 var (
 	RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: plugin.Namespace,
-		Subsystem: "unbound",
+		Subsystem: "ipref",
 		Name:      "request_duration_seconds",
 		Buckets:   plugin.TimeBuckets,
 		Help:      "Histogram of the time each request took.",
@@ -20,7 +20,7 @@ var (
 
 	RcodeCount = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: plugin.Namespace,
-		Subsystem: "unbound",
+		Subsystem: "ipref",
 		Name:      "response_rcode_count_total",
 		Help:      "Counter of rcodes made per request.",
 	}, []string{"server", "rcode"})

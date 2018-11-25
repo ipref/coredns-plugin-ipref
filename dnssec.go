@@ -1,4 +1,4 @@
-package unbound
+package ipref
 
 import "github.com/miekg/dns"
 

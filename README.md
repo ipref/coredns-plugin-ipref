@@ -1,13 +1,13 @@
-# unbound
+# ipref
 
 ## Name
 
-*unbound* - perform recursive queries using libunbound.
+*ipref* - perform recursive queries using libunbound.
 
 ## Description
 
-Via *unbound* you can perform recursive queries. Unbound uses DNSSEC by default when resolving *and*
-it returns those records (DNSKEY, RRSIG, NSEC and NSEC3) back to the clients. The *unbound* plugin
+Via *ipref* you can perform recursive queries. Unbound uses DNSSEC by default when resolving *and*
+it returns those records (DNSKEY, RRSIG, NSEC and NSEC3) back to the clients. The *ipref* plugin
 will remove those records when a client didn't ask for it. The internal (RR) answer cache of Unbound
 is disabled, so you may want to use the *cache* plugin.
 
@@ -21,7 +21,7 @@ This plugin can only be used once per Server Block.
 ## Syntax
 
 ~~~
-unbound [FROM]
+ipref [FROM]
 ~~~
 
 * **FROM** is the base domain to match for the request to be resolved. If not specified the zones
@@ -30,7 +30,7 @@ unbound [FROM]
 More features utilized with an expanded syntax:
 
 ~~~
-unbound [FROM] {
+ipref [FROM] {
     except IGNORED_NAMES...
     option NAME VALUE
 }
@@ -45,8 +45,8 @@ unbound [FROM] {
 
 If monitoring is enabled (via the *prometheus* directive) then the following metric is exported:
 
-* `coredns_unbound_request_duration_seconds{server}` - duration per query.
-* `coredns_unbound_response_rcode_count_total{server, rcode}` - count of RCODEs.
+* `coredns_ipref_request_duration_seconds{server}` - duration per query.
+* `coredns_ipref_response_rcode_count_total{server, rcode}` - count of RCODEs.
 
 The `server` label indicates which server handled the request, see the *metrics* plugin for details.
 
@@ -55,7 +55,7 @@ The `server` label indicates which server handled the request, see the *metrics*
 Resolve queries for all domains:
 ~~~ corefile
 . {
-    unbound
+    ipref
 }
 ~~~
 
@@ -63,7 +63,7 @@ Resolve all queries within example.org.
 
 ~~~ corefile
 . {
-    unbound example.org
+    ipref example.org
 }
 ~~~
 
@@ -71,7 +71,7 @@ or
 
 ~~~ corefile
 example.org {
-    unbound
+    ipref
 }
 ~~~
 
@@ -79,7 +79,7 @@ Resolve everything except queries for example.org (or below):
 
 ~~~ corefile
 . {
-    unbound {
+    ipref {
         except example.org
     }
 }
@@ -89,7 +89,7 @@ Enable [DNS Query Name Minimisation](https://tools.ietf.org/html/rfc7816) by set
 
 ~~~ corefile
 . {
-    unbound {
+    ipref {
         option qname-minimisation yes
     }
 }
@@ -97,7 +97,7 @@ Enable [DNS Query Name Minimisation](https://tools.ietf.org/html/rfc7816) by set
 
 ## Bugs
 
-The *unbound* plugin depends on libunbound(3) which is C library, to compile this you have
+The *ipref* plugin depends on libunbound(3) which is C library, to compile this you have
 a dependency on C and cgo. You can't compile CoreDNS completely static. For compilation you
 also need the libunbound source code installed (`libunbound-dev` on Debian).
 

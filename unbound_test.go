@@ -1,4 +1,4 @@
-package unbound
+package ipref
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"github.com/miekg/dns"
 )
 
-func TestUnbound(t *testing.T) {
-	u := New()
+func TestIpref(t *testing.T) {
+	ipr := New()
 
 	tests := []struct {
 		qname         string
@@ -43,7 +43,7 @@ func TestUnbound(t *testing.T) {
 		req.SetQuestion(dns.Fqdn(tc.qname), tc.qtype)
 
 		rec := dnstest.NewRecorder(&test.ResponseWriter{})
-		_, err := u.ServeDNS(ctx, rec, req)
+		_, err := ipr.ServeDNS(ctx, rec, req)
 
 		if err != tc.expectedErr {
 			t.Errorf("Test %d: Expected error %v, but got %v", i, tc.expectedErr, err)

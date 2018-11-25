@@ -1,4 +1,4 @@
-package unbound
+package ipref
 
 import (
 	"testing"
