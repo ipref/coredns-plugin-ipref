@@ -11,20 +11,6 @@ import (
 	"github.com/miekg/unbound"
 )
 
-// allocate encoded address to an IPREF address
-//var fake_ea byte
-
-func encoded_address(ip net.IP, ref string) net.IP {
-
-	//	if fake_ea++; fake_ea == 255 {
-	//		fake_ea = 1
-	//	}
-
-	ea := net.IP{10, 252, 253, 1}
-
-	return ea
-}
-
 // resolve AA query (emulated with TXT for now)
 func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
@@ -41,19 +27,21 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 	}
 
 	if err != nil || res.Rcode != dns.RcodeSuccess || !res.HaveData || res.NxDomain {
-		return res, fmt.Errorf("no TXT records, containing embeded AA records, found")
+		return res, fmt.Errorf("no valid TXT records")
 	}
 
 	// parse AA embedded in TXT
 
+	var ea net.IP
 	rrs := make([]dns.RR, 0) // encoded addresses
+	reason := fmt.Errorf("no TXT records with valid AA records")
 
 	for _, rr := range res.Rr {
 
 		hdr := rr.Header()
 
 		if hdr.Rrtype != dns.TypeTXT || hdr.Class != dns.ClassINET {
-			continue
+			continue // paranoia
 		}
 
 		for _, txt := range rr.(*dns.TXT).Txt {
@@ -62,16 +50,21 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 			toks := strings.Fields(txt)
 			if len(toks) != 2 || toks[0] != "AA" {
-				continue //return res, fmt.Errorf("Invalid AA record")
+				continue
 			}
 
 			addr := strings.Split(toks[1], "+") // ipref address: ip + ref
 
 			if len(addr) != 2 {
-				continue // return res, fmt.Errorf("Invalid AA format")
+				reason = fmt.Errorf("Invalid IPREF address")
+				continue
 			}
 
-			ref := addr[1] // string for now, but we should parse it to a Ref type
+			ref, err := parse_ref(addr[1])
+			if err != nil {
+				reason = fmt.Errorf("Invalid IPREF reference")
+				continue
+			}
 
 			// resolve IP portion of IPREF address if necessary
 
@@ -92,7 +85,8 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 				}
 
 				if err != nil || ipres.Rcode != dns.RcodeSuccess || !ipres.HaveData || ipres.NxDomain {
-					continue // return ipres, err
+					reason = fmt.Errorf("cannot resolve IPREF ip address")
+					continue
 				}
 
 				// process ip resolution rr
@@ -105,8 +99,14 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 						continue
 					}
 
+					ea, err = encoded_address(iprr.(*dns.A).A, ref)
+					if err != nil {
+						reason = err
+						continue
+					}
+
 					aa := new(dns.A) // we return AA as A ipv4 only for now
-					aa.A = encoded_address(iprr.(*dns.A).A, ref)
+					aa.A = ea
 					aa.Hdr.Name = hdr.Name
 					aa.Hdr.Rrtype = dns.TypeA
 					aa.Hdr.Class = dns.ClassINET
@@ -118,8 +118,14 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 			} else {
 
+				ea, err = encoded_address(ip, ref)
+				if err != nil {
+					reason = err
+					continue
+				}
+
 				aa := new(dns.A) // we return AA as A ipv4 only for now
-				aa.A = encoded_address(ip, ref)
+				aa.A = ea
 				aa.Hdr.Name = hdr.Name
 				aa.Hdr.Rrtype = dns.TypeA
 				aa.Hdr.Class = dns.ClassINET
@@ -132,7 +138,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 	}
 
 	if len(rrs) == 0 {
-		return res, fmt.Errorf("TXT resolved successfully but no AA records")
+		return res, reason
 	}
 
 	// compose result, replace TXT result with generated A result

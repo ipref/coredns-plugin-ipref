@@ -41,6 +41,8 @@ func setup(c *caddy.Controller) error {
 	})
 	c.OnShutdown(ipr.Stop)
 
+	compile_regex()
+
 	return nil
 }
 
