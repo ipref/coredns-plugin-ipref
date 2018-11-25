@@ -106,7 +106,6 @@ func (ipr *Ipref) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 	rcode := dns.RcodeServerFailure
 	if err == nil {
 		rcode = res.AnswerPacket.Rcode
-		pp_res(res)
 	}
 	rc, ok := dns.RcodeToString[rcode]
 	if !ok {

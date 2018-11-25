@@ -11,31 +11,6 @@ import (
 	"github.com/miekg/unbound"
 )
 
-// pretty print result
-func pp_res(res *unbound.Result) {
-
-	fmt.Printf("result.for:    %v %v %v\n", res.Qname, res.Qtype, res.Qclass)
-
-	fmt.Printf("result.Data:   [") // Data [][]byte -- Slice of rdata items formed from the reply
-	space := ""
-	for _, item := range res.Data {
-		if res.Qtype == dns.TypeTXT {
-			fmt.Printf("%v(%v)%v", space, item[0], string(item[1:]))
-		} else {
-			fmt.Printf("%v%v", space, item)
-		}
-		space = "  "
-	}
-	fmt.Printf("]\n")
-
-	fmt.Printf("result.RR:     %v\n", res.Rr) // RR []dns.RR -- The RR encoded from Data, Qclass, Qtype, Qname and Ttl
-
-	//fmt.Printf("result.AnsPkt: \n%v", res.AnswerPacket) //AnswerPacket *dns.Msg -- Full answer packet
-
-	fmt.Printf("result.ret:    Rcode(%v)  HaveData(%v)  NxDomain(%v)  Secure(%v)  Bogus(%v)  why(%v)\n",
-		res.Rcode, res.HaveData, res.NxDomain, res.Secure, res.Bogus, res.WhyBogus)
-}
-
 // allocate encoded address to an IPREF address
 //var fake_ea byte
 
