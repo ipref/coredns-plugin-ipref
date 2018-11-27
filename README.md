@@ -7,7 +7,7 @@
 ## Description
 
 Via *ipref* you can perform recursive queries that resolve IPREF addresses in addition to
-standard IPv4 and IPv6 addresses. Ipref is based on unboud plugin which uses libunbound
+standard IPv4 and IPv6 addresses. Ipref plugin is based on unboud plugin which uses libunbound
 library. Unbound uses DNSSEC by default when resolving *and* it returns those records
 (DNSKEY, RRSIG, NSEC and NSEC3) back to the clients. The *ipref* plugin will remove those
 records when a client didn't ask for it. The internal (RR) answer cache of Unbound is
@@ -101,7 +101,7 @@ Enable [DNS Query Name Minimisation](https://tools.ietf.org/html/rfc7816) by set
 
 IPREF needs new DNS resource record type. The plan is to register AA records with IANA.
 For now, as a workaround to allow development, the unavailable AA records are emulated
-by embedding them in TXT records. This is invisible to hosts performing name resolution.
+by embedding them in TXT records. This is invisible to hosts requesting name resolution.
 
 The *ipref* plugin depends on libunbound(3) which is C library, to compile this you have
 a dependency on C and cgo. You can't compile CoreDNS completely static. For compilation you
