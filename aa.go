@@ -60,7 +60,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 				continue
 			}
 
-			ref, err := parse_ref(addr[1])
+			ref, err := ipr.parse_ref(addr[1])
 			if err != nil {
 				reason = fmt.Errorf("Invalid IPREF reference")
 				continue
@@ -99,7 +99,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 						continue
 					}
 
-					ea, err = encoded_address(iprr.(*dns.A).A, ref)
+					ea, err = ipr.encoded_address(iprr.(*dns.A).A, ref)
 					if err != nil {
 						reason = err
 						continue
@@ -118,7 +118,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 			} else {
 
-				ea, err = encoded_address(ip, ref)
+				ea, err = ipr.encoded_address(ip, ref)
 				if err != nil {
 					reason = err
 					continue

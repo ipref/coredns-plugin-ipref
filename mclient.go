@@ -10,34 +10,43 @@ import (
 )
 
 const (
-	MSGMAX   = 64
-	sockname = "/var/run/ipref-mapper.sock"
+	MSGMAX = 64
 )
 
-var conn *net.UnixConn
-var msg [MSGMAX]byte
-var id byte
+type MapperClient struct {
+	sockname string
+	conn     *net.UnixConn
+	msgid    byte
 
-var re_hexref *regexp.Regexp
-var re_decref *regexp.Regexp
-var re_dotref *regexp.Regexp
+	re_hexref *regexp.Regexp
+	re_decref *regexp.Regexp
+	re_dotref *regexp.Regexp
+}
 
-func compile_regex() {
-	re_hexref = regexp.MustCompile(`^[0-9a-fA-F]+([-][0-9a-fA-F]+)+$`)
-	re_decref = regexp.MustCompile(`^[0-9]+([,][0-9]+)*$`)
-	re_dotref = regexp.MustCompile(`^([1-9]?[0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])([.]([1-9]?[0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]))+$`)
+func (m *MapperClient) init() {
+	m.sockname = "/var/run/ipref-mapper.sock"
+	m.re_hexref = regexp.MustCompile(`^[0-9a-fA-F]+([-][0-9a-fA-F]+)+$`)
+	m.re_decref = regexp.MustCompile(`^[0-9]+([,][0-9]+)*$`)
+	m.re_dotref = regexp.MustCompile(`^([1-9]?[0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])([.]([1-9]?[0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]))+$`)
+}
+
+func (m *MapperClient) clear() {
+	if m.conn != nil {
+		m.conn.Close()
+	}
 }
 
 // parse reference
-func parse_ref(sss string) ([]byte, error) {
+func (ipr *Ipref) parse_ref(sss string) ([]byte, error) {
 
+	m := ipr.m
 	ref := make([]byte, 8, 8)
 	var val uint64
 	var err error
 
 	// hex (max 16 bytes)
 
-	if re_hexref.MatchString(sss) {
+	if m.re_hexref.MatchString(sss) {
 		hexstr := strings.Replace(sss, "-", "", -1)
 		hexlen := len(hexstr)
 		if hexlen > 32 {
@@ -64,7 +73,7 @@ func parse_ref(sss string) ([]byte, error) {
 
 	// decimal (max 8 bytes)
 
-	if re_decref.MatchString(sss) {
+	if m.re_decref.MatchString(sss) {
 		decstr := strings.Replace(sss, ",", "", -1)
 		val, err = strconv.ParseUint(decstr, 10, 64)
 		if err != nil {
@@ -79,7 +88,7 @@ func parse_ref(sss string) ([]byte, error) {
 
 	// dotted decimal (max 16 bytes)
 
-	if re_dotref.MatchString(sss) {
+	if m.re_dotref.MatchString(sss) {
 		dotstr := strings.Split(sss, ".")
 		dotlen := len(dotstr)
 		if dotlen > 16 {
@@ -103,27 +112,30 @@ func parse_ref(sss string) ([]byte, error) {
 	return ref, fmt.Errorf("invalid reference format")
 }
 
-func encoded_address(ip net.IP, ref []byte) (net.IP, error) {
+func (ipr *Ipref) encoded_address(ip net.IP, ref []byte) (net.IP, error) {
 
-	var err error
+	m := ipr.m
 
-	if conn == nil {
-		conn, err = net.DialUnix("unixpacket", nil, &net.UnixAddr{sockname, "unixpacket"})
+	if m.conn == nil {
+		conn, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{m.sockname, "unixpacket"})
 		if err != nil {
-			conn = nil
 			return net.IP{0, 0, 0, 0}, fmt.Errorf("cannot connect to mapper: %v", err)
 		}
+		m.conn = conn
 	}
+
+	var msg [MSGMAX]byte
+	var err error
 
 	// header
 
 	wlen := 4
 
 	msg[0] = 0x42
-	if id += 1; id == 255 {
-		id = 1
+	if m.msgid += 1; m.msgid == 255 {
+		m.msgid = 1
 	}
-	msg[1] = id
+	msg[1] = m.msgid
 	msg[2] = 0
 	msg[3] = 0
 
@@ -163,26 +175,26 @@ func encoded_address(ip net.IP, ref []byte) (net.IP, error) {
 
 	// Don't wait more than half a second
 
-	err = conn.SetDeadline(time.Now().Add(time.Millisecond * 500))
+	err = m.conn.SetDeadline(time.Now().Add(time.Millisecond * 500))
 	if err != nil {
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("cannot set mapper request deadline: %v", err)
 	}
 
 	// send request to mapper
 
-	_, err = conn.Write(msg[:wlen])
+	_, err = m.conn.Write(msg[:wlen])
 	if err != nil {
-		conn.Close()
-		conn = nil
+		m.conn.Close()
+		m.conn = nil
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("mapper request send error: %v", err)
 	}
 
 	// read response
 
-	rlen, err := conn.Read(msg[:])
+	rlen, err := m.conn.Read(msg[:])
 	if err != nil {
-		conn.Close()
-		conn = nil
+		m.conn.Close()
+		m.conn = nil
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("mapper request receive error: %v", err)
 	}
 
@@ -198,7 +210,7 @@ func encoded_address(ip net.IP, ref []byte) (net.IP, error) {
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("mapper request malformed response")
 	}
 
-	if msg[1] != id {
+	if msg[1] != m.msgid {
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("mapper request response out of sequence")
 	}
 

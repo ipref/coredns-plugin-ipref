@@ -1,6 +1,8 @@
 package ipref
 
 import (
+	"strings"
+
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/metrics"
@@ -41,8 +43,6 @@ func setup(c *caddy.Controller) error {
 	})
 	c.OnShutdown(ipr.Stop)
 
-	compile_regex()
-
 	return nil
 }
 
@@ -68,6 +68,7 @@ func iprefParse(c *caddy.Controller) (*Ipref, error) {
 		for c.NextBlock() {
 			switch c.Val() {
 			case "except":
+
 				except := c.RemainingArgs()
 				if len(except) == 0 {
 					return nil, c.ArgErr()
@@ -76,7 +77,9 @@ func iprefParse(c *caddy.Controller) (*Ipref, error) {
 					except[i] = plugin.Host(except[i]).Normalize()
 				}
 				ipr.except = except
+
 			case "option":
+
 				args := c.RemainingArgs()
 				if len(args) != 2 {
 					return nil, c.ArgErr()
@@ -84,6 +87,23 @@ func iprefParse(c *caddy.Controller) (*Ipref, error) {
 				if err := ipr.setOption(args[0], args[1]); err != nil {
 					return nil, err
 				}
+
+			case "mapper":
+
+				args := c.RemainingArgs()
+				if len(args) != 1 {
+					return nil, c.ArgErr()
+				}
+				if !strings.HasPrefix(args[0], "unix://") {
+					return nil, c.Err("invalid protocol type")
+				}
+
+				if strings.HasPrefix(args[0], "unix:///") {
+					ipr.m.sockname = args[0][7:]
+				} else {
+					ipr.m.sockname = "/" + args[0][7:]
+				}
+
 			default:
 				return nil, c.ArgErr()
 			}

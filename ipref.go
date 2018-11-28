@@ -20,6 +20,7 @@ var log = clog.NewWithPlugin("ipref")
 type Ipref struct {
 	u *unbound.Unbound
 	t *unbound.Unbound
+	m *MapperClient
 
 	from   []string
 	except []string
@@ -39,7 +40,10 @@ func New() *Ipref {
 	tcp := unbound.New()
 	tcp.SetOption("tcp-upstream:", "yes")
 
-	ipr := &Ipref{u: udp, t: tcp}
+	mclient := &MapperClient{}
+	mclient.init()
+
+	ipr := &Ipref{u: udp, t: tcp, m: mclient}
 
 	for k, v := range options {
 		if err := ipr.setOption(k, v); err != nil {
@@ -54,6 +58,7 @@ func New() *Ipref {
 func (ipr *Ipref) Stop() error {
 	ipr.u.Destroy()
 	ipr.t.Destroy()
+	ipr.m.clear()
 	return nil
 }
 
