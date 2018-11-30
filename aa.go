@@ -54,7 +54,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 				continue
 			}
 
-			addr := strings.Split(toks[1], "+") // ipref address: ip + ref
+			addr := strings.Split(toks[1], "+") // ipref address: gw + ref
 
 			if len(addr) != 2 {
 				reason = fmt.Errorf("invalid IPREF address")
@@ -67,11 +67,11 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 				continue
 			}
 
-			// resolve IP portion of IPREF address if necessary
+			// resolve GW portion of IPREF address if necessary
 
-			if ip := net.ParseIP(addr[0]); ip == nil {
+			if gw := net.ParseIP(addr[0]); gw == nil {
 
-				var ipres *unbound.Result
+				var gwres *unbound.Result
 
 				dns_type := dns.TypeA
 				if strings.Index(addr[0], ".") < 0 {
@@ -80,27 +80,27 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 				switch state.Proto() {
 				case "tcp":
-					ipres, err = ipr.t.Resolve(addr[0], dns_type, dns.ClassINET)
+					gwres, err = ipr.t.Resolve(addr[0], dns_type, dns.ClassINET)
 				case "udp":
-					ipres, err = ipr.u.Resolve(addr[0], dns_type, dns.ClassINET)
+					gwres, err = ipr.u.Resolve(addr[0], dns_type, dns.ClassINET)
 				}
 
-				if err != nil || ipres.Rcode != dns.RcodeSuccess || !ipres.HaveData || ipres.NxDomain {
-					reason = fmt.Errorf("cannot resolve IPREF ip address")
+				if err != nil || gwres.Rcode != dns.RcodeSuccess || !gwres.HaveData || gwres.NxDomain {
+					reason = fmt.Errorf("cannot resolve IPREF gw address")
 					continue
 				}
 
-				// process ip resolution rr
+				// process gw resolution rr
 
-				for _, iprr := range ipres.Rr {
+				for _, gwrr := range gwres.Rr {
 
-					iphdr := iprr.Header()
+					gwhdr := gwrr.Header()
 
-					if iphdr.Rrtype != dns.TypeA || hdr.Class != dns.ClassINET {
+					if gwhdr.Rrtype != dns.TypeA || hdr.Class != dns.ClassINET {
 						continue
 					}
 
-					ea, err = ipr.encoded_address(iprr.(*dns.A).A, ref)
+					ea, err = ipr.encoded_address(gwrr.(*dns.A).A, ref)
 					if err != nil {
 						reason = err
 						continue
@@ -119,13 +119,13 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 			} else {
 
-				ea, err = ipr.encoded_address(ip, ref)
+				ea, err = ipr.encoded_address(gw, ref)
 				if err != nil {
 					reason = err
 					continue
 				}
 
-				aa := new(dns.A) // we return AA as A ipv4 only for now
+				aa := new(dns.A) // we return AA as A ipv4 for now
 				aa.A = ea
 				aa.Hdr.Name = hdr.Name
 				aa.Hdr.Rrtype = dns.TypeA

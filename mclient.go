@@ -112,7 +112,7 @@ func (ipr *Ipref) parse_ref(sss string) ([]byte, error) {
 	return ref, fmt.Errorf("invalid reference format")
 }
 
-func (ipr *Ipref) encoded_address(ip net.IP, ref []byte) (net.IP, error) {
+func (ipr *Ipref) encoded_address(gw net.IP, ref []byte) (net.IP, error) {
 
 	m := ipr.m
 
@@ -139,16 +139,16 @@ func (ipr *Ipref) encoded_address(ip net.IP, ref []byte) (net.IP, error) {
 	msg[2] = 0
 	msg[3] = 0
 
-	// ip
+	// gw
 
-	iplen := len(ip)
-	if iplen != 4 && iplen != 16 {
-		return net.IP{0, 0, 0, 0}, fmt.Errorf("invalid IP length: %v", iplen)
+	gwlen := len(gw)
+	if gwlen != 4 && gwlen != 16 {
+		return net.IP{0, 0, 0, 0}, fmt.Errorf("invalid GW address length: %v", gwlen)
 	}
 
-	copy(msg[wlen:], ip)
-	wlen += iplen
-	msg[2] = byte((iplen >> 2) << 4)
+	copy(msg[wlen:], gw)
+	wlen += gwlen
+	msg[2] = byte((gwlen >> 2) << 4)
 
 	// ref
 
@@ -186,7 +186,7 @@ func (ipr *Ipref) encoded_address(ip net.IP, ref []byte) (net.IP, error) {
 	if err != nil {
 		m.conn.Close()
 		m.conn = nil
-		return net.IP{0, 0, 0, 0}, fmt.Errorf("mapper request send error: %v", err)
+		return net.IP{0, 0, 0, 0}, fmt.Errorf("map request send error: %v", err)
 	}
 
 	// read response
@@ -195,23 +195,23 @@ func (ipr *Ipref) encoded_address(ip net.IP, ref []byte) (net.IP, error) {
 	if err != nil {
 		m.conn.Close()
 		m.conn = nil
-		return net.IP{0, 0, 0, 0}, fmt.Errorf("mapper request receive error: %v", err)
+		return net.IP{0, 0, 0, 0}, fmt.Errorf("map request receive error: %v", err)
 	}
 
 	if rlen < 2 {
-		return net.IP{0, 0, 0, 0}, fmt.Errorf("mapper request no data received")
+		return net.IP{0, 0, 0, 0}, fmt.Errorf("no data received from mapper")
 	}
 
 	if msg[0] != 0x82 {
-		return net.IP{0, 0, 0, 0}, fmt.Errorf("mapper request declined by mapper")
+		return net.IP{0, 0, 0, 0}, fmt.Errorf("map request declined by mapper")
 	}
 
 	if rlen != int(msg[3])*4 {
-		return net.IP{0, 0, 0, 0}, fmt.Errorf("mapper request malformed response")
+		return net.IP{0, 0, 0, 0}, fmt.Errorf("malformed response from mapper")
 	}
 
 	if msg[1] != m.msgid {
-		return net.IP{0, 0, 0, 0}, fmt.Errorf("mapper request response out of sequence")
+		return net.IP{0, 0, 0, 0}, fmt.Errorf("mapper response out of sequence")
 	}
 
 	ealen := int(msg[2]&0x0f) * 4
