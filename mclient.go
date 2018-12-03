@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	MSGMAX = 64
+	MSGMAX = 320 // 255 + 1 + 16 + 16 + 16 + 4 = 308 rounded up to 16 byte boundary
 )
 
 type MapperClient struct {
@@ -112,7 +112,7 @@ func (ipr *Ipref) parse_ref(sss string) ([]byte, error) {
 	return ref, fmt.Errorf("invalid reference format")
 }
 
-func (ipr *Ipref) encoded_address(gw net.IP, ref []byte) (net.IP, error) {
+func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref []byte) (net.IP, error) {
 
 	m := ipr.m
 
@@ -138,6 +138,19 @@ func (ipr *Ipref) encoded_address(gw net.IP, ref []byte) (net.IP, error) {
 	msg[1] = m.msgid
 	msg[2] = 0
 	msg[3] = 0
+
+	// dnm
+
+	dnmlen := len(dnm)
+	if dnmlen > 255 {
+		return net.IP{0, 0, 0, 0}, fmt.Errorf("invalid domain name (too long): %v", dnm)
+	}
+	msg[4] = byte(dnmlen)
+	copy(msg[5:], dnm)
+	wlen += (dnmlen + 4) &^ 3
+	for ii := 5 + dnmlen; ii < wlen; ii++ {
+		msg[ii] = 0 // pad with zeros
+	}
 
 	// gw
 
@@ -198,8 +211,8 @@ func (ipr *Ipref) encoded_address(gw net.IP, ref []byte) (net.IP, error) {
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("map request receive error: %v", err)
 	}
 
-	if rlen < 2 {
-		return net.IP{0, 0, 0, 0}, fmt.Errorf("no data received from mapper")
+	if rlen < 4 {
+		return net.IP{0, 0, 0, 0}, fmt.Errorf("response from mapper too short")
 	}
 
 	if msg[0] != 0x82 {

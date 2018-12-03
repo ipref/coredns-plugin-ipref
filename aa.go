@@ -100,7 +100,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 						continue
 					}
 
-					ea, err = ipr.encoded_address(gwrr.(*dns.A).A, ref)
+					ea, err = ipr.encoded_address(state.QName(), gwrr.(*dns.A).A, ref)
 					if err != nil {
 						reason = err
 						continue
@@ -119,7 +119,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 			} else {
 
-				ea, err = ipr.encoded_address(gw, ref)
+				ea, err = ipr.encoded_address(state.QName(), gw, ref)
 				if err != nil {
 					reason = err
 					continue
