@@ -83,10 +83,8 @@ func (ipr *Ipref) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 		return plugin.NextOrFailure(ipr.Name(), ipr.Next, ctx, w, r)
 	}
 
-	var (
-		res *unbound.Result
-		err error
-	)
+	var res *unbound.Result
+	var err error
 
 	switch {
 

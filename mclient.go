@@ -47,6 +47,7 @@ func (ipr *Ipref) parse_ref(sss string) ([]byte, error) {
 	// hex (max 16 bytes)
 
 	if m.re_hexref.MatchString(sss) {
+
 		hexstr := strings.Replace(sss, "-", "", -1)
 		hexlen := len(hexstr)
 		if hexlen > 32 {
@@ -61,12 +62,12 @@ func (ipr *Ipref) parse_ref(sss string) ([]byte, error) {
 			hexlen++
 		}
 		reflen := len(ref)
-		for ii := reflen - hexlen/2; ii < reflen; ii++ {
+		for ii := 0; ii < hexlen/2; ii++ {
 			val, err := strconv.ParseUint(hexstr[ii+ii:ii+ii+2], 16, 8)
 			if err != nil {
 				return ref, err
 			}
-			ref[ii] = byte(val)
+			ref[ii+reflen-hexlen/2] = byte(val)
 		}
 		return ref, nil
 	}
@@ -74,6 +75,7 @@ func (ipr *Ipref) parse_ref(sss string) ([]byte, error) {
 	// decimal (max 8 bytes)
 
 	if m.re_decref.MatchString(sss) {
+
 		decstr := strings.Replace(sss, ",", "", -1)
 		val, err = strconv.ParseUint(decstr, 10, 64)
 		if err != nil {
@@ -89,6 +91,7 @@ func (ipr *Ipref) parse_ref(sss string) ([]byte, error) {
 	// dotted decimal (max 16 bytes)
 
 	if m.re_dotref.MatchString(sss) {
+
 		dotstr := strings.Split(sss, ".")
 		dotlen := len(dotstr)
 		if dotlen > 16 {
