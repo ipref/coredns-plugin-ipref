@@ -1,17 +1,22 @@
 package ipref
 
 import (
+	"encoding/binary"
 	"fmt"
+	"github.com/ipref/ref"
 	"net"
 	"regexp"
-	"strconv"
-	"strings"
 	"time"
 )
 
 const (
-	MSGMAX = 320 // 255 + 1 + 16 + 16 + 16 + 4 = 308 rounded up to 16 byte boundary
+	MQP_PING    = 1
+	MQP_MAP_EA  = 2
+	MQP_INFO_AA = 3
+	MSGMAX      = 320 // 255 + 1 + 16 + 16 + 16 + 4 = 308 rounded up to 16 byte boundary
 )
+
+var be = binary.BigEndian
 
 type MapperClient struct {
 	sockname string
@@ -25,9 +30,7 @@ type MapperClient struct {
 
 func (m *MapperClient) init() {
 	m.sockname = "/var/run/ipref-mapper.sock"
-	m.re_hexref = regexp.MustCompile(`^[0-9a-fA-F]+([-][0-9a-fA-F]+)+$`)
-	m.re_decref = regexp.MustCompile(`^[0-9]+([,][0-9]+)*$`)
-	m.re_dotref = regexp.MustCompile(`^([1-9]?[0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])([.]([1-9]?[0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]))+$`)
+	m.msgid = byte(time.Now().Unix() & 0xff)
 }
 
 func (m *MapperClient) clear() {
@@ -36,86 +39,7 @@ func (m *MapperClient) clear() {
 	}
 }
 
-// parse reference
-func (ipr *Ipref) parse_ref(sss string) ([]byte, error) {
-
-	m := ipr.m
-	ref := make([]byte, 8, 8)
-	var val uint64
-	var err error
-
-	// hex (max 16 bytes)
-
-	if m.re_hexref.MatchString(sss) {
-
-		hexstr := strings.Replace(sss, "-", "", -1)
-		hexlen := len(hexstr)
-		if hexlen > 32 {
-			hexstr = hexstr[hexlen-32:]
-			hexlen = 32
-		}
-		if hexlen > 16 {
-			ref = make([]byte, 16, 16)
-		}
-		if (hexlen & 0x1) != 0 {
-			hexstr = "0" + hexstr
-			hexlen++
-		}
-		reflen := len(ref)
-		for ii := 0; ii < hexlen/2; ii++ {
-			val, err := strconv.ParseUint(hexstr[ii+ii:ii+ii+2], 16, 8)
-			if err != nil {
-				return ref, err
-			}
-			ref[ii+reflen-hexlen/2] = byte(val)
-		}
-		return ref, nil
-	}
-
-	// decimal (max 8 bytes)
-
-	if m.re_decref.MatchString(sss) {
-
-		decstr := strings.Replace(sss, ",", "", -1)
-		val, err = strconv.ParseUint(decstr, 10, 64)
-		if err != nil {
-			return ref, err
-		}
-		for ii := 7; val != 0; val >>= 8 {
-			ref[ii] = byte(val & 0xff)
-			ii--
-		}
-		return ref, nil
-	}
-
-	// dotted decimal (max 16 bytes)
-
-	if m.re_dotref.MatchString(sss) {
-
-		dotstr := strings.Split(sss, ".")
-		dotlen := len(dotstr)
-		if dotlen > 16 {
-			dotstr = dotstr[dotlen-16:]
-			dotlen = 16
-		}
-		if dotlen > 8 {
-			ref = make([]byte, 16, 16)
-		}
-		reflen := len(ref)
-		for ii := reflen - dotlen; ii < reflen; ii++ {
-			val, err := strconv.ParseUint(dotstr[ii], 10, 8)
-			if err != nil {
-				return ref, err
-			}
-			ref[ii] = byte(val)
-		}
-		return ref, nil
-	}
-
-	return ref, fmt.Errorf("invalid reference format")
-}
-
-func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref []byte) (net.IP, error) {
+func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref ref.Ref) (net.IP, error) {
 
 	m := ipr.m
 
@@ -132,12 +56,10 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref []byte) (net.IP, er
 
 	// header
 
+	m.msgid += 1
 	wlen := 4
 
-	msg[0] = 0x42
-	if m.msgid += 1; m.msgid == 255 {
-		m.msgid = 1
-	}
+	msg[0] = 0x40 + MQP_MAP_EA
 	msg[1] = m.msgid
 	msg[2] = 0
 	msg[3] = 0
@@ -168,25 +90,14 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref []byte) (net.IP, er
 
 	// ref
 
-	reflen := len(ref)
-	if reflen > 16 {
-		return net.IP{0, 0, 0, 0}, fmt.Errorf("invalid reference length: %v", reflen)
+	if ref.H != 0 {
+		be.PutUint64(msg[wlen:wlen+8], ref.H)
+		wlen += 8
 	}
 
-	if reflen < 8 {
-		for ii := 8 - reflen; ii > 0; ii-- {
-			msg[wlen] = 0
-			wlen++
-		}
-	} else if reflen == 8 {
-	} else {
-		for ii := 16 - reflen; ii > 0; ii-- {
-			msg[wlen] = 0
-			wlen++
-		}
-	}
-	copy(msg[wlen:], ref)
-	wlen += reflen
+	be.PutUint64(msg[wlen:wlen+8], ref.L)
+	wlen += 8
+
 	msg[3] = byte(wlen) / 4
 
 	// Don't wait more than half a second
@@ -218,7 +129,7 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref []byte) (net.IP, er
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("response from mapper too short")
 	}
 
-	if msg[0] != 0x82 {
+	if msg[0] != 0x80+MQP_MAP_EA {
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("map request declined by mapper")
 	}
 

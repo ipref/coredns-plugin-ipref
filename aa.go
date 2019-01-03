@@ -8,6 +8,7 @@ import (
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 	"github.com/coredns/coredns/request"
 
+	"github.com/ipref/ref"
 	"github.com/miekg/dns"
 	"github.com/miekg/unbound"
 )
@@ -49,21 +50,22 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 			// get IPREF address
 
-			toks := strings.Fields(txt)
-			if len(toks) != 2 || toks[0] != "AA" {
+			if !strings.HasPrefix(txt, "AA ") {
 				continue
 			}
-
-			addr := strings.Split(toks[1], "+") // ipref address: gw + ref
+			addr := strings.Split(txt[3:], "+")
 
 			if len(addr) != 2 {
 				reason = fmt.Errorf("invalid IPREF address")
 				continue
 			}
 
-			ref, err := ipr.parse_ref(addr[1])
+			addr[0] = strings.TrimSpace(addr[0])
+			addr[1] = strings.TrimSpace(addr[1])
+
+			ref, err := ref.Parse(addr[1])
 			if err != nil {
-				reason = fmt.Errorf("invalid IPREF reference")
+				reason = fmt.Errorf("invalid IPREF reference: %v %v", addr[1], err)
 				continue
 			}
 
