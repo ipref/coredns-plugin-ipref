@@ -10,10 +10,33 @@ import (
 )
 
 const (
-	MQP_PING    = 1
-	MQP_MAP_EA  = 2
-	MQP_INFO_AA = 3
-	MSGMAX      = 320 // 255 + 1 + 16 + 16 + 16 + 4 = 308 rounded up to 16 byte boundary
+	// v1 constants
+	V1_SIG          = 0x11 // v1 signature
+	V1_HDR_LEN      = 8
+	V1_AREC_LEN     = 4 + 4 + 4 + 8 + 8     // ea + ip + gw + ref.h + ref.l
+	// v1 header offsets
+	V1_VER       = 0
+	V1_CMD       = 1
+	V1_PKTID     = 2
+	V1_RESERVED  = 4
+	V1_PKTLEN    = 6
+	// v1 arec offsets
+	V1_AREC_EA   = 0
+	V1_AREC_IP   = 4
+	V1_AREC_GW   = 8
+	V1_AREC_REFH = 12
+	V1_AREC_REFL = 20
+	// v1 commands
+	V1_ALLOCATE_EA = 6
+	// v1 command mode, top two bits
+	V1_DATA = 0x00
+	V1_REQ  = 0x40
+	V1_ACK  = 0x80
+	V1_NACK = 0xC0
+)
+
+const (
+	MSGMAX      = 48 // 8 + 28 = 36 rounded up to 16 byte boundary
 )
 
 var be = binary.BigEndian
@@ -21,7 +44,7 @@ var be = binary.BigEndian
 type MapperClient struct {
 	sockname string
 	conn     *net.UnixConn
-	msgid    byte
+	msgid    uint16
 
 	re_hexref *regexp.Regexp
 	re_decref *regexp.Regexp
@@ -30,7 +53,7 @@ type MapperClient struct {
 
 func (m *MapperClient) init() {
 	m.sockname = "/var/run/ipref-mapper.sock"
-	m.msgid = byte(time.Now().Unix() & 0xff)
+	m.msgid = uint16(time.Now().Unix() & 0xffff)
 }
 
 func (m *MapperClient) clear() {
@@ -57,48 +80,29 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref ref.Ref) (net.IP, e
 	// header
 
 	m.msgid += 1
-	wlen := 4
+	msglen := V1_HDR_LEN + V1_AREC_LEN
 
-	msg[0] = 0x40 + MQP_MAP_EA
-	msg[1] = m.msgid
-	msg[2] = 0
-	msg[3] = 0
+	msg[V1_VER] = V1_SIG
+	msg[V1_CMD] = V1_REQ | V1_ALLOCATE_EA
+	be.PutUint16(msg[V1_PKTID:V1_PKTID+2], uint16(m.msgid))
+	copy(msg[V1_RESERVED:V1_RESERVED+2], []byte{0,0})
+	be.PutUint16(msg[V1_PKTLEN:V1_PKTLEN+2], uint16(msglen/4))
 
-	// dnm
+	// address record
 
-	dnmlen := len(dnm)
-	if dnmlen > 255 {
-		return net.IP{0, 0, 0, 0}, fmt.Errorf("invalid domain name (too long): %v", dnm)
-	}
-	msg[4] = byte(dnmlen)
-	copy(msg[5:], dnm)
-	wlen += (dnmlen + 4) &^ 3
-	for ii := 5 + dnmlen; ii < wlen; ii++ {
-		msg[ii] = 0 // pad with zeros
-	}
+	off := V1_HDR_LEN
 
-	// gw
+	copy(msg[off+V1_AREC_EA: off+V1_AREC_EA+4], []byte{0,0,0,0})
+	copy(msg[off+V1_AREC_IP: off+V1_AREC_IP+4], []byte{0,0,0,0})
 
 	gwlen := len(gw)
 	if gwlen != 4 && gwlen != 16 {
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("invalid GW address length: %v", gwlen)
 	}
+	copy(msg[off+V1_AREC_GW:off+V1_AREC_GW+4], gw)
 
-	copy(msg[wlen:], gw)
-	wlen += gwlen
-	msg[2] = byte((gwlen >> 2) << 4)
-
-	// ref
-
-	if ref.H != 0 {
-		be.PutUint64(msg[wlen:wlen+8], ref.H)
-		wlen += 8
-	}
-
-	be.PutUint64(msg[wlen:wlen+8], ref.L)
-	wlen += 8
-
-	msg[3] = byte(wlen) / 4
+	be.PutUint64(msg[off+V1_AREC_REFH:off+V1_AREC_REFH+8], ref.H)
+	be.PutUint64(msg[off+V1_AREC_REFL:off+V1_AREC_REFL+8], ref.L)
 
 	// Don't wait more than half a second
 
@@ -109,7 +113,7 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref ref.Ref) (net.IP, e
 
 	// send request to mapper
 
-	_, err = m.conn.Write(msg[:wlen])
+	_, err = m.conn.Write(msg[:msglen])
 	if err != nil {
 		m.conn.Close()
 		m.conn = nil
@@ -125,27 +129,26 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref ref.Ref) (net.IP, e
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("map request receive error: %v", err)
 	}
 
-	if rlen < 4 {
+	if rlen < V1_HDR_LEN {
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("response from mapper too short")
 	}
 
-	if msg[0] != 0x80+MQP_MAP_EA {
+	if msg[V1_VER] != V1_SIG {
+		return net.IP{0, 0, 0, 0}, fmt.Errorf("response is not a v1 protocol")
+	}
+
+	if msg[V1_CMD] != V1_ACK | V1_ALLOCATE_EA {
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("map request declined by mapper")
 	}
 
-	if rlen != int(msg[3])*4 {
-		return net.IP{0, 0, 0, 0}, fmt.Errorf("malformed response from mapper")
+	if rlen != int(be.Uint16(msg[V1_PKTLEN:V1_PKTLEN+2])*4) {
+		return net.IP{0, 0, 0, 0}, fmt.Errorf("incorrect packet length")
 	}
 
-	if msg[1] != m.msgid {
+	if be.Uint16(msg[V1_PKTID:V1_PKTID+2]) != m.msgid {
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("mapper response out of sequence")
 	}
 
-	ealen := int(msg[2]&0x0f) * 4
-
-	if ealen != 4 && ealen != 16 {
-		return net.IP{0, 0, 0, 0}, fmt.Errorf("invalid encoded address length: %v", ealen)
-	}
-
-	return msg[rlen-ealen : rlen], nil
+	off = V1_HDR_LEN
+	return msg[off+V1_AREC_EA : off+V1_AREC_EA+4], nil
 }
