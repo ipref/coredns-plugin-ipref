@@ -3,13 +3,13 @@ package ipref
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/metrics"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
 	"github.com/miekg/unbound"
+	"strconv"
 )
 
 var log = clog.NewWithPlugin("ipref")

@@ -11,15 +11,15 @@ import (
 
 const (
 	// v1 constants
-	V1_SIG          = 0x11 // v1 signature
-	V1_HDR_LEN      = 8
-	V1_AREC_LEN     = 4 + 4 + 4 + 8 + 8     // ea + ip + gw + ref.h + ref.l
+	V1_SIG      = 0x11 // v1 signature
+	V1_HDR_LEN  = 8
+	V1_AREC_LEN = 4 + 4 + 4 + 8 + 8 // ea + ip + gw + ref.h + ref.l
 	// v1 header offsets
-	V1_VER       = 0
-	V1_CMD       = 1
-	V1_PKTID     = 2
-	V1_RESERVED  = 4
-	V1_PKTLEN    = 6
+	V1_VER      = 0
+	V1_CMD      = 1
+	V1_PKTID    = 2
+	V1_RESERVED = 4
+	V1_PKTLEN   = 6
 	// v1 arec offsets
 	V1_AREC_EA   = 0
 	V1_AREC_IP   = 4
@@ -28,6 +28,8 @@ const (
 	V1_AREC_REFL = 20
 	// v1 commands
 	V1_ALLOCATE_EA = 6
+	// v1 tlv types
+	V1_TYPE_STRING = 4
 	// v1 command mode, top two bits
 	V1_DATA = 0x00
 	V1_REQ  = 0x40
@@ -36,7 +38,7 @@ const (
 )
 
 const (
-	MSGMAX      = 48 // 8 + 28 = 36 rounded up to 16 byte boundary
+	MSGMAX = ((V1_HDR_LEN + V1_AREC_LEN + 2 + 255 + 16) / 16) * 16 // round up to 16 byte boundary (304)
 )
 
 var be = binary.BigEndian
@@ -80,20 +82,18 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref ref.Ref) (net.IP, e
 	// header
 
 	m.msgid += 1
-	msglen := V1_HDR_LEN + V1_AREC_LEN
 
 	msg[V1_VER] = V1_SIG
 	msg[V1_CMD] = V1_REQ | V1_ALLOCATE_EA
 	be.PutUint16(msg[V1_PKTID:V1_PKTID+2], uint16(m.msgid))
-	copy(msg[V1_RESERVED:V1_RESERVED+2], []byte{0,0})
-	be.PutUint16(msg[V1_PKTLEN:V1_PKTLEN+2], uint16(msglen/4))
+	copy(msg[V1_RESERVED:V1_RESERVED+2], []byte{0, 0})
 
 	// address record
 
 	off := V1_HDR_LEN
 
-	copy(msg[off+V1_AREC_EA: off+V1_AREC_EA+4], []byte{0,0,0,0})
-	copy(msg[off+V1_AREC_IP: off+V1_AREC_IP+4], []byte{0,0,0,0})
+	copy(msg[off+V1_AREC_EA:off+V1_AREC_EA+4], []byte{0, 0, 0, 0})
+	copy(msg[off+V1_AREC_IP:off+V1_AREC_IP+4], []byte{0, 0, 0, 0})
 
 	gwlen := len(gw)
 	if gwlen != 4 && gwlen != 16 {
@@ -104,7 +104,20 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref ref.Ref) (net.IP, e
 	be.PutUint64(msg[off+V1_AREC_REFH:off+V1_AREC_REFH+8], ref.H)
 	be.PutUint64(msg[off+V1_AREC_REFL:off+V1_AREC_REFL+8], ref.L)
 
-	// Don't wait more than half a second
+	// dns name
+
+	off += V1_AREC_LEN
+	msglen := off
+
+	dnmlen := len(dnm)
+	if 0 < dnmlen && dnmlen < 256 { // should be true since DNS names are shorter than 255 chars
+		msg[off] = V1_TYPE_STRING
+		msg[off+1] = byte(dnmlen)
+		copy(msg[off+2:], dnm)
+		msglen += (dnmlen + 5) &^ 3
+	}
+
+	// set wait time for response
 
 	err = m.conn.SetDeadline(time.Now().Add(time.Millisecond * 500))
 	if err != nil {
@@ -112,6 +125,8 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref ref.Ref) (net.IP, e
 	}
 
 	// send request to mapper
+
+	be.PutUint16(msg[V1_PKTLEN:V1_PKTLEN+2], uint16(msglen/4))
 
 	_, err = m.conn.Write(msg[:msglen])
 	if err != nil {
@@ -137,7 +152,7 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref ref.Ref) (net.IP, e
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("response is not a v1 protocol")
 	}
 
-	if msg[V1_CMD] != V1_ACK | V1_ALLOCATE_EA {
+	if msg[V1_CMD] != V1_ACK|V1_ALLOCATE_EA {
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("map request declined by mapper")
 	}
 
