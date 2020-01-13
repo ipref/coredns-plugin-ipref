@@ -27,7 +27,7 @@ const (
 	V1_AREC_REFH = 12
 	V1_AREC_REFL = 20
 	// v1 commands
-	V1_ALLOCATE_EA = 6
+	V1_MC_GET_EA = 7
 	// v1 tlv types
 	V1_TYPE_STRING = 4
 	// v1 command mode, top two bits
@@ -84,7 +84,7 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref ref.Ref) (net.IP, e
 	m.msgid += 1
 
 	msg[V1_VER] = V1_SIG
-	msg[V1_CMD] = V1_REQ | V1_ALLOCATE_EA
+	msg[V1_CMD] = V1_REQ | V1_MC_GET_EA
 	be.PutUint16(msg[V1_PKTID:V1_PKTID+2], uint16(m.msgid))
 	copy(msg[V1_RESERVED:V1_RESERVED+2], []byte{0, 0})
 
@@ -152,7 +152,7 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref ref.Ref) (net.IP, e
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("response is not a v1 protocol")
 	}
 
-	if msg[V1_CMD] != V1_ACK|V1_ALLOCATE_EA {
+	if msg[V1_CMD] != V1_ACK|V1_MC_GET_EA {
 		return net.IP{0, 0, 0, 0}, fmt.Errorf("map request declined by mapper")
 	}
 
