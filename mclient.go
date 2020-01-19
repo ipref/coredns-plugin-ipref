@@ -81,7 +81,9 @@ func (ipr *Ipref) encoded_address(dnm string, gw net.IP, ref ref.Ref) (net.IP, e
 
 	// header
 
-	m.msgid += 1
+	if m.msgid += 1; m.msgid == 0 {
+		m.msgid += 1;
+	}
 
 	msg[V1_VER] = V1_SIG
 	msg[V1_CMD] = V1_REQ | V1_MC_GET_EA
