@@ -20,6 +20,8 @@ Libunbound can be configured via (a subset of) options, currently the following 
 
 This plugin can only be used once per Server Block.
 
+This code includes technology covered by patent US 10,749,840 B2.
+
 ## Syntax
 
 ~~~
