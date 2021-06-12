@@ -60,7 +60,7 @@ func iprefParse(c *caddy.Controller) (*Ipref, error) {
 			copy(ipr.from, c.ServerBlockKeys)
 		}
 		for i, str := range ipr.from {
-			ipr.from[i] = plugin.Host(str).Normalize()
+			ipr.from[i] = plugin.Host(str).NormalizeExact()[0]
 		}
 
 		for c.NextBlock() {
@@ -72,7 +72,7 @@ func iprefParse(c *caddy.Controller) (*Ipref, error) {
 					return nil, c.ArgErr()
 				}
 				for i := 0; i < len(except); i++ {
-					except[i] = plugin.Host(except[i]).Normalize()
+					except[i] = plugin.Host(except[i]).NormalizeExact()[0]
 				}
 				ipr.except = except
 
