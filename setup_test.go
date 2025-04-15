@@ -52,6 +52,12 @@ func TestSetupExtended(t *testing.T) {
 		{`ipref {
 			optoin qname-minimisation yes
 		}`, true},
+		{`ipref {
+			config testdata/unbound.conf.bad
+		}`, true},
+		{`ipref {
+			config testdata/unbound.conf.good
+		}`, false},
 	}
 
 	for i, test := range tests {

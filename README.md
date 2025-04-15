@@ -37,6 +37,7 @@ More features utilized with an expanded syntax:
 ipref [FROM] {
     except IGNORED_NAMES...
     option NAME VALUE
+    config FILENAME
 }
 ~~~
 
@@ -44,6 +45,9 @@ ipref [FROM] {
 * **IGNORED_NAMES** in `except` is a space-separated list of domains to exclude from resolving.
 * `option` allows setting *some* unbound options (see unbound.conf(5)), this can be specified multiple
   times.
+* `config` allows one to supply an `unbound.conf` file to configure unbound.
+  _Note:_ The unbound configuration file still needs to be populated inside a
+  docker container.
 
 ## Metrics
 
@@ -99,6 +103,11 @@ Enable [DNS Query Name Minimisation](https://tools.ietf.org/html/rfc7816) by set
 }
 ~~~
 
+## Compiling into CoreDNS
+
+To compile this with CoreDNS you can follow the normal procedure for external plugins, except that
+you need to compile it with cgo. This means setting `CGO_ENABLED=1` when running `go build`.
+
 ## Bugs
 
 IPREF needs new DNS resource record type. The plan is to register AA records with IANA.
@@ -109,7 +118,7 @@ The *ipref* plugin depends on libunbound(3) which is C library, to compile this 
 a dependency on C and cgo. You can't compile CoreDNS completely static. For compilation you
 also need the libunbound source code installed (`libunbound-dev` on Debian).
 
-DNSSEC *validation* is not supported (yet). There is also no (documented) way of configurating
+DNSSEC *validation* is not supported (yet). There is also no (documented) way of configuration
 a trust anchor.
 
 ## See Also

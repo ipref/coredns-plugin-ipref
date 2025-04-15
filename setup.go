@@ -49,6 +49,7 @@ func iprefParse(c *caddy.Controller) (*Ipref, error) {
 
 	i := 0
 	for c.Next() {
+		// Return an error if unbound block specified more than once
 		if i > 0 {
 			return nil, plugin.ErrOnce
 		}
@@ -64,6 +65,9 @@ func iprefParse(c *caddy.Controller) (*Ipref, error) {
 		}
 
 		for c.NextBlock() {
+			var args []string
+			var err error
+
 			switch c.Val() {
 			case "except":
 
@@ -77,12 +81,19 @@ func iprefParse(c *caddy.Controller) (*Ipref, error) {
 				ipr.except = except
 
 			case "option":
-
-				args := c.RemainingArgs()
+				args = c.RemainingArgs()
 				if len(args) != 2 {
 					return nil, c.ArgErr()
 				}
-				if err := ipr.setOption(args[0], args[1]); err != nil {
+				if err = ipr.setOption(args[0], args[1]); err != nil {
+					return nil, err
+				}
+			case "config":
+				args = c.RemainingArgs()
+				if len(args) != 1 {
+					return nil, c.ArgErr()
+				}
+				if err = ipr.config(args[0]); err != nil {
 					return nil, err
 				}
 
