@@ -4,6 +4,7 @@ import (
 	"fmt"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 	"github.com/coredns/coredns/request"
+	. "github.com/ipref/common"
 	"github.com/ipref/ref"
 	"github.com/miekg/dns"
 	"github.com/miekg/unbound"
@@ -32,7 +33,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 	// parse AA embedded in TXT
 
-	var ea net.IP
+	var ea IP
 	rrs := make([]dns.RR, 0) // encoded addresses
 	reason := fmt.Errorf("no TXT records with valid AA records")
 
@@ -69,26 +70,29 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 			// resolve GW portion of IPREF address if necessary
 
-			if gw := net.ParseIP(addr[0]); gw == nil {
+			var gw IP
+			if gw, err = ParseIP(addr[0]); err != nil {
 
 				var gwres *unbound.Result
 
-				dns_type := dns.TypeA
-				if strings.Index(addr[0], ".") < 0 {
-					dns_type = dns.TypeAAAA
+				dns_order := [...]uint16{dns.TypeA, dns.TypeAAAA}
+				if ipr.gw_ipver == 6 {
+					dns_order[0], dns_order[1] = dns_order[1], dns_order[0]
 				}
-
-				switch state.Proto() {
-				case "tcp":
-					gwres, err = ipr.t.Resolve(addr[0], dns_type, dns.ClassINET)
-				case "udp":
-					gwres, err = ipr.u.Resolve(addr[0], dns_type, dns.ClassINET)
+				for _, dns_type := range dns_order {
+					switch state.Proto() {
+					case "tcp":
+						gwres, err = ipr.t.Resolve(addr[0], dns_type, dns.ClassINET)
+					case "udp":
+						gwres, err = ipr.u.Resolve(addr[0], dns_type, dns.ClassINET)
+					}
+					if err == nil && gwres.Rcode == dns.RcodeSuccess && gwres.HaveData && !gwres.NxDomain {
+						goto have_res
+					}
 				}
-
-				if err != nil || gwres.Rcode != dns.RcodeSuccess || !gwres.HaveData || gwres.NxDomain {
-					reason = fmt.Errorf("cannot resolve IPREF gw address")
-					continue
-				}
+				reason = fmt.Errorf("cannot resolve IPREF gw address")
+				continue
+			have_res:
 
 				// process gw resolution rr
 
@@ -96,25 +100,24 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 					gwhdr := gwrr.Header()
 
-					if gwhdr.Rrtype != dns.TypeA || hdr.Class != dns.ClassINET {
+					if hdr.Class != dns.ClassINET {
+						continue
+					}
+					if gwhdr.Rrtype == dns.TypeA {
+						gw = MustParseIP(gwrr.(*dns.A).A.String())
+					} else if gwhdr.Rrtype == dns.TypeAAAA {
+						gw = MustParseIP(gwrr.(*dns.AAAA).AAAA.String())
+					} else {
 						continue
 					}
 
-					ea, err = ipr.encoded_address(state.QName(), gwrr.(*dns.A).A, ref)
+					ea, err = ipr.encoded_address(state.QName(), gw, ref)
 					if err != nil {
 						reason = err
 						continue
 					}
 
-					aa := new(dns.A) // we return AA as A ipv4 only for now
-					aa.A = ea
-					aa.Hdr.Name = hdr.Name
-					aa.Hdr.Rrtype = dns.TypeA
-					aa.Hdr.Class = dns.ClassINET
-					aa.Hdr.Ttl = hdr.Ttl
-					aa.Hdr.Rdlength = uint16(len(aa.A))
-
-					rrs = append(rrs, aa)
+					rrs = append(rrs, hdr_and_ip_to_rr(hdr, ea))
 				}
 
 			} else {
@@ -125,15 +128,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 					continue
 				}
 
-				aa := new(dns.A) // we return AA as A ipv4 for now
-				aa.A = ea
-				aa.Hdr.Name = hdr.Name
-				aa.Hdr.Rrtype = dns.TypeA
-				aa.Hdr.Class = dns.ClassINET
-				aa.Hdr.Ttl = hdr.Ttl
-				aa.Hdr.Rdlength = uint16(len(aa.A))
-
-				rrs = append(rrs, aa)
+				rrs = append(rrs, hdr_and_ip_to_rr(hdr, ea))
 			}
 		}
 	}
@@ -152,8 +147,42 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 	res.Data = make([][]byte, 0)
 	for _, rr := range rrs {
-		res.Data = append(res.Data, rr.(*dns.A).A)
+		var ip []byte
+		switch r := rr.(type) {
+		case *dns.A:
+			ip = r.A
+		case *dns.AAAA:
+			ip = r.AAAA
+		default:
+			panic("unexpected")
+		}
+		res.Data = append(res.Data, ip)
 	}
 
 	return res, nil
+}
+
+// create an A or AAAA from an existing RR header and an IP
+func hdr_and_ip_to_rr(hdr *dns.RR_Header, ip IP) dns.RR {
+
+	nip := net.ParseIP(ip.String())
+	if ip.Is4() {
+		rr := new(dns.A)
+		rr.A = nip
+		rr.Hdr.Name = hdr.Name
+		rr.Hdr.Rrtype = dns.TypeA
+		rr.Hdr.Class = dns.ClassINET
+		rr.Hdr.Ttl = hdr.Ttl
+		rr.Hdr.Rdlength = uint16(len(rr.A))
+		return rr
+	} else {
+		rr := new(dns.AAAA)
+		rr.AAAA = nip
+		rr.Hdr.Name = hdr.Name
+		rr.Hdr.Rrtype = dns.TypeAAAA
+		rr.Hdr.Class = dns.ClassINET
+		rr.Hdr.Ttl = hdr.Ttl
+		rr.Hdr.Rdlength = uint16(len(rr.AAAA))
+		return rr
+	}
 }

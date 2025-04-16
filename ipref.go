@@ -19,6 +19,8 @@ type Ipref struct {
 	u *unbound.Unbound
 	t *unbound.Unbound
 	m *MapperClient
+	ea_ipver int
+	gw_ipver int
 
 	from   []string
 	except []string
@@ -26,10 +28,13 @@ type Ipref struct {
 	Next plugin.Handler
 }
 
-// options for unbound, see unbound.conf(5).
 var options = map[string]string{
+	// options for unbound, see unbound.conf(5).
 	"msg-cache-size":   "0",
 	"rrset-cache-size": "0",
+
+	"ea-ipver": "4",
+	"gw-ipver": "4",
 }
 
 // New returns a pointer to an initialzed Ipref.
@@ -38,16 +43,16 @@ func New() *Ipref {
 	tcp := unbound.New()
 	tcp.SetOption("tcp-upstream:", "yes")
 
-	mclient := &MapperClient{}
-	mclient.init()
-
-	ipr := &Ipref{u: udp, t: tcp, m: mclient}
+	ipr := &Ipref{u: udp, t: tcp}
 
 	for k, v := range options {
 		if err := ipr.setOption(k, v); err != nil {
 			log.Warningf("Could not set option: %s", err)
 		}
 	}
+
+	ipr.m = &MapperClient{}
+	ipr.m.init(ipr.ea_ipver, ipr.gw_ipver)
 
 	return ipr
 }
@@ -62,15 +67,44 @@ func (ipr *Ipref) Stop() error {
 
 // setOption sets option k to value v in ipr.
 func (ipr *Ipref) setOption(k, v string) error {
-	// Add ":" as unbound expects it
-	k += ":"
-	// Set for both udp and tcp handlers, return the error from the latter.
-	ipr.u.SetOption(k, v)
-	err := ipr.t.SetOption(k, v)
-	if err != nil {
-		return fmt.Errorf("failed to set option %q with value %q: %s", k, v, err)
+	switch k {
+	case "msg-cache-size", "rrset-cache-size":
+
+		// Add ":" as unbound expects it
+		k += ":"
+		// Set for both udp and tcp handlers, return the error from the latter.
+		ipr.u.SetOption(k, v)
+		err := ipr.t.SetOption(k, v)
+		if err != nil {
+			return fmt.Errorf("failed to set option %q with value %q: %s", k, v, err)
+		}
+		return nil
+
+	case "ea-ipver":
+		var err error
+		ipr.ea_ipver, err = strconv.Atoi(v)
+		if err != nil {
+			return err
+		}
+		if ipr.ea_ipver != 4 && ipr.ea_ipver != 6 {
+			return fmt.Errorf("invalid ea ip version: %s", v)
+		}
+		return nil
+
+	case "gw-ipver":
+		var err error
+		ipr.gw_ipver, err = strconv.Atoi(v)
+		if err != nil {
+			return err
+		}
+		if ipr.gw_ipver != 4 && ipr.gw_ipver != 6 {
+			return fmt.Errorf("invalid gw ip version: %s", v)
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unrecognized option: %s", k)
 	}
-	return nil
 }
 
 // config reads the file f and sets unbound configuration

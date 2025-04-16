@@ -18,6 +18,13 @@ Libunbound can be configured via (a subset of) options, currently the following 
 * `msg-cache-size`, set to 0
 * `rrset-cache-size`, set to 0
 
+Configure the IP version with the options:
+
+* `ea-ipver` (IP version for local addresses), set to 4 or 6 (default is 4)
+* `gw-ipver` (preferred IP version for the gateway), set to 4 or 6 (default is 4)
+    * This option only has an effect if an AA record has a gateway hostname with both an A and an
+      AAAA record.
+
 This plugin can only be used once per Server Block.
 
 This code includes technology covered by patent US 10,749,840 B2.
@@ -93,6 +100,16 @@ Resolve everything except queries for example.org (or below):
 }
 ~~~
 
+Use IPv6 local addresses:
+
+~~~ corefile
+. {
+    ipref {
+        option ea-ipver 6
+    }
+}
+~~~
+
 Enable [DNS Query Name Minimisation](https://tools.ietf.org/html/rfc7816) by setting the option:
 
 ~~~ corefile
@@ -107,6 +124,16 @@ Enable [DNS Query Name Minimisation](https://tools.ietf.org/html/rfc7816) by set
 
 To compile this with CoreDNS you can follow the normal procedure for external plugins, except that
 you need to compile it with cgo. This means setting `CGO_ENABLED=1` when running `go build`.
+
+You may need to add these dependencies to CoreDNS's `go.mod`:
+
+~~~
+require (
+	github.com/ipref/common v1.2.0
+	github.com/ipref/ref v0.0.0-20230130062235-2e91b82300b7
+	github.com/miekg/unbound v0.0.0-20240613151107-1f0f3b231f04
+)
+~~~
 
 ## Bugs
 
