@@ -35,7 +35,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 	var ea IP
 	rrs := make([]dns.RR, 0) // encoded addresses
-	reason := fmt.Errorf("no TXT records with valid AA records")
+	var reason error
 
 	for _, rr := range res.Rr {
 
@@ -134,7 +134,11 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 	}
 
 	if len(rrs) == 0 {
-		clog.Errorf("ipref mapper: %v", reason)
+		if reason == nil {
+			reason = fmt.Errorf("no TXT records with valid AA records")
+		} else {
+			clog.Errorf("ipref mapper: %v", reason)
+		}
 		return res, reason
 	}
 
