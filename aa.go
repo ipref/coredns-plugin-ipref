@@ -75,24 +75,20 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 				var gwres *unbound.Result
 
-				dns_order := [...]uint16{dns.TypeA, dns.TypeAAAA}
+				dns_type := dns.TypeA
 				if ipr.gw_ipver == 6 {
-					dns_order[0], dns_order[1] = dns_order[1], dns_order[0]
+					dns_type = dns.TypeAAAA
 				}
-				for _, dns_type := range dns_order {
-					switch state.Proto() {
-					case "tcp":
-						gwres, err = ipr.t.Resolve(addr[0], dns_type, dns.ClassINET)
-					case "udp":
-						gwres, err = ipr.u.Resolve(addr[0], dns_type, dns.ClassINET)
-					}
-					if err == nil && gwres.Rcode == dns.RcodeSuccess && gwres.HaveData && !gwres.NxDomain {
-						goto have_res
-					}
+				switch state.Proto() {
+				case "tcp":
+					gwres, err = ipr.t.Resolve(addr[0], dns_type, dns.ClassINET)
+				case "udp":
+					gwres, err = ipr.u.Resolve(addr[0], dns_type, dns.ClassINET)
 				}
-				reason = fmt.Errorf("cannot resolve IPREF gw address")
-				continue
-			have_res:
+				if err != nil || gwres.Rcode != dns.RcodeSuccess || !gwres.HaveData || gwres.NxDomain {
+					reason = fmt.Errorf("cannot resolve IPREF gw address")
+					continue
+				}
 
 				// process gw resolution rr
 
@@ -111,6 +107,10 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 						continue
 					}
 
+					if gw.Ver() != ipr.gw_ipver {
+						continue
+					}
+
 					ea, err = ipr.encoded_address(state.QName(), gw, ref)
 					if err != nil {
 						reason = err
@@ -121,6 +121,10 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 				}
 
 			} else {
+
+				if gw.Ver() != ipr.gw_ipver {
+					continue
+				}
 
 				ea, err = ipr.encoded_address(state.QName(), gw, ref)
 				if err != nil {
