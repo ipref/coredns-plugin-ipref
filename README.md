@@ -25,6 +25,9 @@ Configure the IP version with the options:
     * This option only has an effect if an AA record has a gateway hostname with both an A and an
       AAAA record.
 
+The mapper socket for communication with the gateway can be configured with the option `mapper`,
+which is set to `/var/run/ipref-mapper.sock` by default.
+
 This plugin can only be used once per Server Block.
 
 This code includes technology covered by patent US 10,749,840 B2.

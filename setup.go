@@ -5,7 +5,6 @@ import (
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/metrics"
-	"strings"
 )
 
 func init() {
@@ -95,22 +94,6 @@ func iprefParse(c *caddy.Controller) (*Ipref, error) {
 				}
 				if err = ipr.config(args[0]); err != nil {
 					return nil, err
-				}
-
-			case "mapper":
-
-				args := c.RemainingArgs()
-				if len(args) != 1 {
-					return nil, c.ArgErr()
-				}
-				if !strings.HasPrefix(args[0], "unix://") {
-					return nil, c.Err("invalid protocol type")
-				}
-
-				if strings.HasPrefix(args[0], "unix:///") {
-					ipr.m.sockname = args[0][7:]
-				} else {
-					ipr.m.sockname = "/" + args[0][7:]
 				}
 
 			default:

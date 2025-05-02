@@ -21,6 +21,7 @@ type Ipref struct {
 	m *MapperClient
 	ea_ipver int
 	gw_ipver int
+	mapper_socket string
 
 	from   []string
 	except []string
@@ -35,6 +36,8 @@ var options = map[string]string{
 
 	"ea-ipver": "4",
 	"gw-ipver": "4",
+
+	"mapper": "/var/run/ipref-mapper.sock",
 }
 
 // New returns a pointer to an initialzed Ipref.
@@ -52,7 +55,7 @@ func New() *Ipref {
 	}
 
 	ipr.m = &MapperClient{}
-	ipr.m.init(ipr.ea_ipver, ipr.gw_ipver)
+	ipr.m.init()
 
 	return ipr
 }
@@ -100,6 +103,10 @@ func (ipr *Ipref) setOption(k, v string) error {
 		if ipr.gw_ipver != 4 && ipr.gw_ipver != 6 {
 			return fmt.Errorf("invalid gw ip version: %s", v)
 		}
+		return nil
+
+	case "mapper":
+		ipr.mapper_socket = v
 		return nil
 
 	default:

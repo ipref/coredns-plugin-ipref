@@ -17,9 +17,6 @@ const (
 var be = binary.BigEndian
 
 type MapperClient struct {
-	ea_ipver int
-	gw_ipver int
-	sockname string
 	conn     *net.UnixConn
 	msgid    uint16
 
@@ -28,10 +25,7 @@ type MapperClient struct {
 	re_dotref *regexp.Regexp
 }
 
-func (m *MapperClient) init(ea_ipver, gw_ipver int) {
-	m.ea_ipver = ea_ipver
-	m.gw_ipver = gw_ipver
-	m.sockname = "/var/run/ipref-mapper.sock"
+func (m *MapperClient) init() {
 	m.msgid = uint16(time.Now().Unix() & 0xffff)
 }
 
@@ -46,7 +40,7 @@ func (ipr *Ipref) encoded_address(dnm string, gw IP, ref ref.Ref) (IP, error) {
 	m := ipr.m
 
 	if m.conn == nil {
-		conn, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{m.sockname, "unixpacket"})
+		conn, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{ipr.mapper_socket, "unixpacket"})
 		if err != nil {
 			return IP{}, fmt.Errorf("cannot connect to mapper: %v", err)
 		}
