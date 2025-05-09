@@ -55,6 +55,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 			addr := strings.Split(txt[3:], "+")
 
 			if len(addr) != 2 {
+				log.Debugf("ipref: invalid AA record: '%v'", txt)
 				reason = fmt.Errorf("invalid IPREF address")
 				continue
 			}
@@ -64,6 +65,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 			ref, err := ref.Parse(addr[1])
 			if err != nil {
+				log.Debugf("ipref: invalid AA record: '%v'", txt)
 				reason = fmt.Errorf("invalid IPREF reference: %v %v", addr[1], err)
 				continue
 			}
@@ -86,7 +88,8 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 					gwres, err = ipr.u.Resolve(addr[0], dns_type, dns.ClassINET)
 				}
 				if err != nil || gwres.Rcode != dns.RcodeSuccess || !gwres.HaveData || gwres.NxDomain {
-					reason = fmt.Errorf("cannot resolve IPREF gw address")
+					log.Debugf("ipref: cannot resolve IPREF gw domain: '%v'", addr[0])
+					reason = fmt.Errorf("cannot resolve IPREF gw domain")
 					continue
 				}
 
@@ -113,6 +116,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 					ea, err = ipr.encoded_address(state.QName(), gw, ref)
 					if err != nil {
+						log.Debugf("ipref: error getting encoded address for %v + %v: %v", gw, ref, err)
 						reason = err
 						continue
 					}
@@ -128,6 +132,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 				ea, err = ipr.encoded_address(state.QName(), gw, ref)
 				if err != nil {
+					log.Debugf("ipref: error getting encoded address for %v + %v: %v", gw, ref, err)
 					reason = err
 					continue
 				}
