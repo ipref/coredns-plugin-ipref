@@ -153,12 +153,7 @@ func (ipr *Ipref) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 
 	default:
 
-		switch state.Proto() {
-		case "tcp":
-			res, err = ipr.t.Resolve(state.QName(), state.QType(), state.QClass())
-		case "udp":
-			res, err = ipr.u.Resolve(state.QName(), state.QType(), state.QClass())
-		}
+		return dns.RcodeServerFailure, err
 	}
 
 	rcode := dns.RcodeServerFailure
