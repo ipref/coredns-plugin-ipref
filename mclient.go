@@ -7,6 +7,7 @@ import (
 	"github.com/ipref/ref"
 	"net"
 	"regexp"
+	"sync"
 	"time"
 )
 
@@ -17,6 +18,7 @@ const (
 var be = binary.BigEndian
 
 type MapperClient struct {
+	lock     sync.Mutex
 	conn     *net.UnixConn
 	msgid    uint16
 
@@ -30,6 +32,8 @@ func (m *MapperClient) init() {
 }
 
 func (m *MapperClient) clear() {
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	if m.conn != nil {
 		m.conn.Close()
 	}
@@ -42,6 +46,9 @@ func (ipr *Ipref) encoded_address(dnm string, gw IP, ref ref.Ref) (IP, error) {
 	}
 
 	m := ipr.m
+
+	m.lock.Lock()
+	defer m.lock.Unlock()
 
 	if m.conn == nil {
 		conn, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{ipr.mapper_socket, "unixpacket"})
