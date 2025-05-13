@@ -1,10 +1,13 @@
 package ipref
 
 import (
+	"fmt"
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/metrics"
+	"net"
+	"strings"
 )
 
 func init() {
@@ -44,11 +47,16 @@ func setup(c *caddy.Controller) error {
 }
 
 func iprefParse(c *caddy.Controller) (*Ipref, error) {
-	ipr := New()
+	ipr := &Ipref{
+		m: &MapperClient{},
+		ea_ipver: 4,
+		gw_ipver: 4,
+		mapper_socket: "/run/ipref/mapper.sock",
+	}
 
 	i := 0
 	for c.Next() {
-		// Return an error if unbound block specified more than once
+		// Return an error if ipref block specified more than once
 		if i > 0 {
 			return nil, plugin.ErrOnce
 		}
@@ -64,12 +72,9 @@ func iprefParse(c *caddy.Controller) (*Ipref, error) {
 		}
 
 		for c.NextBlock() {
-			var args []string
-			var err error
-
-			switch c.Val() {
+			name := c.Val()
+			switch name {
 			case "except":
-
 				except := c.RemainingArgs()
 				if len(except) == 0 {
 					return nil, c.ArgErr()
@@ -79,27 +84,59 @@ func iprefParse(c *caddy.Controller) (*Ipref, error) {
 				}
 				ipr.except = except
 
-			case "option":
-				args = c.RemainingArgs()
-				if len(args) != 2 {
-					return nil, c.ArgErr()
-				}
-				if err = ipr.setOption(args[0], args[1]); err != nil {
-					return nil, err
-				}
-			case "config":
-				args = c.RemainingArgs()
+			case "upstream":
+				args := c.RemainingArgs()
 				if len(args) != 1 {
 					return nil, c.ArgErr()
 				}
-				if err = ipr.config(args[0]); err != nil {
-					return nil, err
+				ipr.upstream = strings.TrimSpace(args[0])
+				if !addrHasPort(ipr.upstream) {
+					ipr.upstream += ":53"
 				}
+
+			case "ea-ipver", "gw-ipver":
+				args := c.RemainingArgs()
+				if len(args) != 1 {
+					return nil, c.ArgErr()
+				}
+				var ipver int
+				switch args[0] {
+				case "4":
+					ipver = 4
+				case "6":
+					ipver = 6
+				default:
+					return nil, c.ArgErr()
+				}
+				if name == "ea-ipver" {
+					ipr.ea_ipver = ipver
+				} else {
+					ipr.gw_ipver = ipver
+				}
+
+			case "mapper":
+				args := c.RemainingArgs()
+				if len(args) != 1 {
+					return nil, c.ArgErr()
+				}
+				ipr.mapper_socket = args[0]
 
 			default:
 				return nil, c.ArgErr()
 			}
 		}
 	}
+
+	if ipr.upstream == "" {
+		return nil, fmt.Errorf("missing upstream")
+	}
+
+	ipr.m.init()
+
 	return ipr, nil
+}
+
+func addrHasPort(addr string) bool {
+	_, _, err := net.SplitHostPort(addr)
+	return err == nil
 }

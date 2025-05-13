@@ -1,43 +1,44 @@
 package ipref
 
 import (
+	"errors"
 	"fmt"
-	clog "github.com/coredns/coredns/plugin/pkg/log"
-	"github.com/coredns/coredns/request"
 	. "github.com/ipref/common"
 	"github.com/ipref/ref"
 	"github.com/miekg/dns"
-	"github.com/miekg/unbound"
 	"net"
 	"strings"
 )
 
-// resolve AA query (emulated with TXT for now)
-func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
+var UnsupportedRRType = errors.New("unsupported RR type")
+var NoAARecordsFound = errors.New("no valid AA records found")
 
-	var res *unbound.Result
-	var err error
+// resolve AA query (emulated with TXT for now)
+func (ipr *Ipref) resolve_aa(req *dns.Msg) ([]dns.RR, error) {
+
+	if len(req.Question) != 1 {
+		return nil, fmt.Errorf("expected exactly one question")
+	}
+	q := req.Question[0]
+	if q.Qclass != dns.ClassINET || (q.Qtype != dns.TypeA && q.Qtype != dns.TypeAAAA) {
+		return nil, UnsupportedRRType
+	}
+	name := normalizeName(q.Name)
 
 	// resolve TXT
 
-	switch state.Proto() {
-	case "tcp":
-		res, err = ipr.t.Resolve(state.QName(), dns.TypeTXT, dns.ClassINET)
-	case "udp":
-		res, err = ipr.u.Resolve(state.QName(), dns.TypeTXT, dns.ClassINET)
-	}
-
-	if err != nil || res.Rcode != dns.RcodeSuccess || !res.HaveData || res.NxDomain {
-		return res, fmt.Errorf("no valid TXT records")
+	upRes, err := ipr.upstreamResolve(name, dns.TypeTXT)
+	if err != nil {
+		log.Debugf("upstream server error: %v", err)
+		return nil, err
 	}
 
 	// parse AA embedded in TXT
 
 	var ea IP
-	rrs := make([]dns.RR, 0) // encoded addresses
-	var reason error
+	answer := make([]dns.RR, 0) // encoded addresses
 
-	for _, rr := range res.Rr {
+	for _, rr := range upRes.Answer {
 
 		hdr := rr.Header()
 
@@ -55,8 +56,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 			addr := strings.Split(txt[3:], "+")
 
 			if len(addr) != 2 {
-				log.Debugf("ipref: invalid AA record: '%v'", txt)
-				reason = fmt.Errorf("invalid IPREF address")
+				log.Debugf("invalid AA record: '%v'", txt)
 				continue
 			}
 
@@ -65,8 +65,7 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 
 			ref, err := ref.Parse(addr[1])
 			if err != nil {
-				log.Debugf("ipref: invalid AA record: '%v'", txt)
-				reason = fmt.Errorf("invalid IPREF reference: %v %v", addr[1], err)
+				log.Debugf("invalid AA record: '%v'", txt)
 				continue
 			}
 
@@ -75,27 +74,21 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 			var gw IP
 			if gw, err = ParseIP(addr[0]); err != nil {
 
-				var gwres *unbound.Result
-
 				dns_type := dns.TypeA
 				if ipr.gw_ipver == 6 {
 					dns_type = dns.TypeAAAA
 				}
-				switch state.Proto() {
-				case "tcp":
-					gwres, err = ipr.t.Resolve(addr[0], dns_type, dns.ClassINET)
-				case "udp":
-					gwres, err = ipr.u.Resolve(addr[0], dns_type, dns.ClassINET)
-				}
-				if err != nil || gwres.Rcode != dns.RcodeSuccess || !gwres.HaveData || gwres.NxDomain {
-					log.Debugf("ipref: cannot resolve IPREF gw domain: '%v'", addr[0])
-					reason = fmt.Errorf("cannot resolve IPREF gw domain")
+				gwname := normalizeName(addr[0])
+				var gwres *dns.Msg
+				gwres, err = ipr.upstreamResolve(gwname, dns_type)
+				if err != nil {
+					log.Debugf("error resolving domain in AA record: '%v'", gwname)
 					continue
 				}
 
 				// process gw resolution rr
 
-				for _, gwrr := range gwres.Rr {
+				for _, gwrr := range gwres.Answer {
 
 					gwhdr := gwrr.Header()
 
@@ -114,14 +107,13 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 						continue
 					}
 
-					ea, err = ipr.encoded_address(state.QName(), gw, ref)
+					ea, err = ipr.encoded_address(name, gw, ref)
 					if err != nil {
-						log.Debugf("ipref: error getting encoded address for %v + %v: %v", gw, ref, err)
-						reason = err
+						log.Debugf("error getting encoded address for %v + %v: %v", gw, ref, err)
 						continue
 					}
 
-					rrs = append(rrs, hdr_and_ip_to_rr(hdr, ea))
+					answer = append(answer, createRR(hdr, ea))
 				}
 
 			} else {
@@ -130,72 +122,40 @@ func (ipr *Ipref) resolve_aa(state request.Request) (*unbound.Result, error) {
 					continue
 				}
 
-				ea, err = ipr.encoded_address(state.QName(), gw, ref)
+				ea, err = ipr.encoded_address(name, gw, ref)
 				if err != nil {
-					log.Debugf("ipref: error getting encoded address for %v + %v: %v", gw, ref, err)
-					reason = err
+					log.Debugf("error getting encoded address for %v + %v: %v", gw, ref, err)
 					continue
 				}
 
-				rrs = append(rrs, hdr_and_ip_to_rr(hdr, ea))
+				answer = append(answer, createRR(hdr, ea))
 			}
 		}
 	}
 
-	if len(rrs) == 0 {
-		if reason == nil {
-			reason = fmt.Errorf("no TXT records with valid AA records")
-		} else {
-			clog.Errorf("ipref mapper: %v", reason)
-		}
-		return res, reason
+	if len(answer) == 0 {
+		return nil, NoAARecordsFound
 	}
-
-	// compose result, replace TXT result with generated A result
-
-	res.Qtype = dns.TypeA
-	res.Rr = rrs
-	res.AnswerPacket.Answer = rrs
-	res.AnswerPacket.Question = state.Req.Question
-
-	res.Data = make([][]byte, 0)
-	for _, rr := range rrs {
-		var ip []byte
-		switch r := rr.(type) {
-		case *dns.A:
-			ip = r.A
-		case *dns.AAAA:
-			ip = r.AAAA
-		default:
-			panic("unexpected")
-		}
-		res.Data = append(res.Data, ip)
-	}
-
-	return res, nil
+	return answer, nil
 }
 
 // create an A or AAAA from an existing RR header and an IP
-func hdr_and_ip_to_rr(hdr *dns.RR_Header, ip IP) dns.RR {
-
+func createRR(hdr *dns.RR_Header, ip IP) (rr dns.RR) {
 	nip := net.ParseIP(ip.String())
 	if ip.Is4() {
-		rr := new(dns.A)
-		rr.A = nip
-		rr.Hdr.Name = hdr.Name
-		rr.Hdr.Rrtype = dns.TypeA
-		rr.Hdr.Class = dns.ClassINET
-		rr.Hdr.Ttl = hdr.Ttl
-		rr.Hdr.Rdlength = uint16(len(rr.A))
-		return rr
+		a := new(dns.A)
+		a.A = nip
+		a.Hdr.Rrtype = dns.TypeA
+		rr = a
 	} else {
-		rr := new(dns.AAAA)
-		rr.AAAA = nip
-		rr.Hdr.Name = hdr.Name
-		rr.Hdr.Rrtype = dns.TypeAAAA
-		rr.Hdr.Class = dns.ClassINET
-		rr.Hdr.Ttl = hdr.Ttl
-		rr.Hdr.Rdlength = uint16(len(rr.AAAA))
-		return rr
+		aaaa := new(dns.AAAA)
+		aaaa.AAAA = nip
+		aaaa.Hdr.Rrtype = dns.TypeAAAA
+		rr = aaaa
 	}
+	rr.Header().Name = hdr.Name
+	rr.Header().Class = dns.ClassINET
+	rr.Header().Ttl = hdr.Ttl
+	rr.Header().Rdlength = uint16(len(nip))
+	return
 }
