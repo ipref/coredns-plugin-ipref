@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	. "github.com/ipref/common"
-	"github.com/ipref/ref"
 	"net"
 	"regexp"
 	"sync"
@@ -39,7 +38,7 @@ func (m *MapperClient) clear() {
 	}
 }
 
-func (ipr *Ipref) encoded_address(dnm string, gw IP, ref ref.Ref) (IP, error) {
+func (ipr *Ipref) encoded_address(dnm string, gw IP, ref Ref) (IP, error) {
 
 	if gw.Ver() != ipr.gw_ipver {
 		return IP{}, fmt.Errorf("address is not IPv%v, discarding", ipr.gw_ipver)

@@ -79,8 +79,7 @@ You may need to add these dependencies to CoreDNS's `go.mod`:
 
 ~~~
 require (
-	github.com/ipref/common v1.2.0
-	github.com/ipref/ref v0.0.0-20230130062235-2e91b82300b7
+	github.com/ipref/common v1.3.1
 )
 ~~~
 

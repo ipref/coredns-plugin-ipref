@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	. "github.com/ipref/common"
-	"github.com/ipref/ref"
 	"github.com/miekg/dns"
 	"net"
 	"strings"
@@ -63,7 +62,7 @@ func (ipr *Ipref) resolve_aa(req *dns.Msg) ([]dns.RR, error) {
 			addr[0] = strings.TrimSpace(addr[0])
 			addr[1] = strings.TrimSpace(addr[1])
 
-			ref, err := ref.Parse(addr[1])
+			ref, err := ParseRef(addr[1])
 			if err != nil {
 				log.Debugf("invalid AA record: '%v'", txt)
 				continue
